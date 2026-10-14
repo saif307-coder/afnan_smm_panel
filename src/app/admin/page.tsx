@@ -23,6 +23,9 @@ import {
   DollarSign,
   AlertCircle,
   Code2,
+  Wallet,
+  Activity,
+  Loader2,
 } from 'lucide-react';
 
 interface OrderItem {
@@ -56,6 +59,48 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
+  // Live SMM Provider Balance state
+  const [providerBalance, setProviderBalance] = useState<{
+    loading: boolean;
+    balance: string;
+    currency: string;
+    providerName?: string;
+    error?: string;
+  }>({
+    loading: true,
+    balance: '...',
+    currency: 'USD',
+  });
+
+  const fetchLiveBalance = async () => {
+    try {
+      setProviderBalance((prev) => ({ ...prev, loading: true }));
+      const res = await fetch('/api/admin/providers/balance');
+      const data = await res.json();
+      if ((data.connected || data.success) && data.balance !== undefined) {
+        setProviderBalance({
+          loading: false,
+          balance: data.balance,
+          currency: data.currency || 'USD',
+          providerName: data.providerName,
+        });
+      } else {
+        setProviderBalance({
+          loading: false,
+          balance: data.balance || '0.0000',
+          currency: data.currency || 'USD',
+          error: data.error,
+        });
+      }
+    } catch {
+      setProviderBalance((prev) => ({
+        ...prev,
+        loading: false,
+        error: 'Failed to fetch balance',
+      }));
+    }
+  };
+
   const fetchOrders = async () => {
     setLoading(true);
     try {
@@ -71,8 +116,14 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const handleRefreshAll = () => {
+    fetchOrders();
+    fetchLiveBalance();
+  };
+
   useEffect(() => {
     fetchOrders();
+    fetchLiveBalance();
   }, []);
 
   // Summary Metrics KPIs
@@ -168,14 +219,28 @@ export default function AdminOrdersPage() {
           </p>
         </div>
 
-        <button
-          onClick={fetchOrders}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 transition shadow-sm w-fit"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Orders</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Live Balance Pill in Header */}
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>
+              {providerBalance.loading ? (
+                'Syncing API Balance...'
+              ) : (
+                `API Balance: $${providerBalance.balance} ${providerBalance.currency}`
+              )}
+            </span>
+          </div>
+
+          <button
+            onClick={handleRefreshAll}
+            disabled={loading || providerBalance.loading}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 transition shadow-sm w-fit"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading || providerBalance.loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -204,16 +269,33 @@ export default function AdminOrdersPage() {
           <div className="text-[11px] text-purple-400/80 mt-1">Combined Scale Volume</div>
         </div>
 
-        {/* Total Cost */}
-        <div className="p-5 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-lg">
+        {/* Live Provider Balance (Accurate from API) */}
+        <div className="p-5 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-lg relative overflow-hidden">
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>Total Cost</span>
-            <DollarSign className="w-4 h-4 text-emerald-400" />
+            <span className="flex items-center gap-1.5 font-medium">
+              <span>Live Provider Balance</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            </span>
+            <Wallet className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-2xl font-extrabold font-mono text-emerald-400 mt-1.5">
-            ${stats.totalCost.toFixed(4)}
+          <div
+            className="text-2xl font-extrabold font-mono text-emerald-400 mt-1.5 truncate"
+            title={`Live SMM API Balance: $${providerBalance.balance} ${providerBalance.currency}`}
+          >
+            {providerBalance.loading ? (
+              <span className="text-slate-500 text-sm font-sans flex items-center gap-1.5">
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" /> Loading...
+              </span>
+            ) : (
+              `$${providerBalance.balance} ${providerBalance.currency}`
+            )}
           </div>
-          <div className="text-[11px] text-emerald-500/80 mt-1">Provider Billed Amount</div>
+          <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+            <span className="truncate max-w-[130px]" title={providerBalance.providerName || 'SMM Provider'}>
+              {providerBalance.providerName || 'Active Provider'}
+            </span>
+            <span className="text-slate-500 font-mono">Billed: ${stats.totalCost.toFixed(4)}</span>
+          </div>
         </div>
 
         {/* Dispatch Health */}

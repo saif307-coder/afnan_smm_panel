@@ -107,6 +107,21 @@ export default function AdminProviderPage() {
           }
           setMappings(newMapState);
         }
+
+        // 3. Auto-load live balance on page load
+        try {
+          const balRes = await fetch('/api/admin/providers/balance');
+          const balData = await balRes.json();
+          if (balData.connected && balData.balance !== undefined) {
+            setTestResult({
+              success: true,
+              balance: balData.balance,
+              currency: balData.currency || 'USD',
+            });
+          }
+        } catch {
+          // ignore auto-fetch error on mount
+        }
       }
     } catch (err) {
       console.error('Failed to load provider:', err);
