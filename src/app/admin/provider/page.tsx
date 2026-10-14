@@ -32,6 +32,7 @@ import {
   Sparkles,
   Tag,
   Filter,
+  AlertCircle,
 } from 'lucide-react';
 
 interface SmmProviderData {
@@ -197,9 +198,21 @@ export default function AdminProviderPage() {
         }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text();
+        data = { error: text || `HTTP ${res.status}: ${res.statusText}` };
+      }
+
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to update provider');
+        const errorMsg =
+          data.error ||
+          (data.errors && Array.isArray(data.errors)
+            ? data.errors.map((e: any) => e.message || e).join(' | ')
+            : `Failed with HTTP ${res.status}: ${res.statusText}`);
+        throw new Error(errorMsg);
       }
 
       setProvider(data.data);
@@ -249,11 +262,20 @@ export default function AdminProviderPage() {
         }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text();
+        data = { error: text || `HTTP ${res.status}: ${res.statusText}` };
+      }
+
       if (!res.ok || !data.success) {
-        const errorMsg = data.errors
-          ? data.errors.map((e: any) => e.message).join(', ')
-          : data.error || 'Failed to create provider';
+        const errorMsg =
+          data.error ||
+          (data.errors && Array.isArray(data.errors)
+            ? data.errors.map((e: any) => e.message || e).join(' | ')
+            : `Failed with HTTP ${res.status}: ${res.statusText}`);
         throw new Error(errorMsg);
       }
 
@@ -270,7 +292,10 @@ export default function AdminProviderPage() {
       setToast({
         show: true,
         type: 'error',
-        message: err instanceof Error ? err.message : 'Failed to save provider credentials',
+        message:
+          err instanceof Error
+            ? err.message
+            : String(err) || 'Failed to save provider credentials',
       });
     } finally {
       setSavingProvider(false);
@@ -514,19 +539,30 @@ export default function AdminProviderPage() {
       {/* Toast Alert */}
       {toast?.show && (
         <div
-          className={`p-4 rounded-2xl border shadow-xl flex items-center justify-between gap-3 animate-in fade-in ${
+          className={`p-4 rounded-2xl border shadow-xl flex items-start justify-between gap-3 animate-in fade-in ${
             toast.type === 'success'
               ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
-              : 'bg-rose-950/80 border-rose-500/50 text-rose-200'
+              : 'bg-rose-950/90 border-rose-500/60 text-rose-200'
           }`}
         >
-          <div className="flex items-center gap-2.5 text-xs font-semibold">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>{toast.message}</span>
+          <div className="flex items-start gap-2.5 text-xs font-semibold overflow-hidden">
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-1">
+              <div className="font-bold">
+                {toast.type === 'success' ? 'Success' : 'Error'}
+              </div>
+              <div className="font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap opacity-95">
+                {toast.message}
+              </div>
+            </div>
           </div>
           <button
             onClick={() => setToast(null)}
-            className="text-xs opacity-70 hover:opacity-100 px-2 py-0.5 rounded bg-black/20"
+            className="text-xs opacity-70 hover:opacity-100 px-2 py-0.5 rounded bg-black/20 shrink-0"
           >
             ✕
           </button>

@@ -80,10 +80,19 @@ export async function POST(req: NextRequest) {
     });
 
     return jsonResponse({ success: true, data: provider }, { status: 201 });
-  } catch (error) {
-    console.error('POST /api/admin/providers error:', error);
+  } catch (error: any) {
+    console.error('POST /api/admin/providers database error:', error);
+    const errorMessage =
+      error?.message ||
+      (typeof error === 'string' ? error : JSON.stringify(error)) ||
+      'Failed to create provider in database';
     return jsonResponse(
-      { success: false, error: 'Failed to create provider' },
+      {
+        success: false,
+        error: errorMessage,
+        code: error?.code,
+        name: error?.name,
+      },
       { status: 500 }
     );
   }
@@ -170,8 +179,16 @@ export async function PUT(req: NextRequest) {
       );
     }
     console.error('PUT /api/admin/providers error:', error);
+    const errorMessage =
+      (error as any)?.message ||
+      (typeof error === 'string' ? error : JSON.stringify(error)) ||
+      'Failed to update provider in database';
     return jsonResponse(
-      { success: false, error: 'Failed to update provider' },
+      {
+        success: false,
+        error: errorMessage,
+        code: prismaError.code,
+      },
       { status: 500 }
     );
   }
