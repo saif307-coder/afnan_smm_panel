@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useTransition } from 'react';
+import Link from 'next/link';
 import {
   Eye,
   Users,
@@ -245,6 +246,14 @@ export default function DashboardPreview() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              href="/admin"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-500/40 text-xs font-semibold text-indigo-300 hover:text-white transition shadow-sm"
+              title="Admin Dashboard"
+            >
+              <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              <span>Admin</span>
+            </Link>
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-slate-800 text-xs text-slate-300">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span>CORS: <strong className="text-emerald-400">*</strong></span>
@@ -255,7 +264,7 @@ export default function DashboardPreview() {
               className="flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-lg bg-slate-800/90 hover:bg-slate-700 active:scale-95 border border-slate-700 transition shadow-sm"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+              <span>Refresh</span>
             </button>
           </div>
         </header>
