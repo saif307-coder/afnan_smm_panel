@@ -23,8 +23,10 @@ import {
   Wifi,
   Smartphone,
   Sparkles,
-  PieChart
+  PieChart,
+  Zap
 } from 'lucide-react';
+import OrderForm from '@/components/OrderForm';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -95,6 +97,9 @@ export default function DashboardPreview() {
   const [graphFilter, setGraphFilter] = useState<'all' | 'followers' | 'nonFollowers'>('all');
   const [audienceFilter, setAudienceFilter] = useState<'country' | 'age' | 'gender'>('country');
   const [showAndroidNavBar, setShowAndroidNavBar] = useState<boolean>(true);
+
+  // Main navigation view: Phase 3 Dynamic Order Form vs Simulator
+  const [activeMainTab, setActiveMainTab] = useState<'order' | 'simulator'>('order');
 
   const fetchCurrent = async () => {
     try {
@@ -262,8 +267,46 @@ export default function DashboardPreview() {
           </div>
         )}
 
-        {/* Main 2-Column Split View: Desktop Engine Controls + Instagram Mobile Simulator */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+        {/* View Switcher: Dynamic Order Dispatcher vs Instagram Simulator */}
+        <div className="flex items-center gap-3 p-1.5 bg-[#0e131f]/90 border border-slate-800/90 rounded-2xl w-fit backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('order')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+              activeMainTab === 'order'
+                ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 text-white shadow-lg shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span>Dynamic Order Form (Phase 3)</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 text-white">Live</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('simulator')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+              activeMainTab === 'simulator'
+                ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 text-white shadow-lg shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Smartphone className="w-4 h-4" />
+            <span>Reel Insights Simulator</span>
+          </button>
+        </div>
+
+        {/* View 1: Dynamic Order Form (Phase 3) */}
+        {activeMainTab === 'order' && (
+          <div className="animate-in fade-in duration-300">
+            <OrderForm />
+          </div>
+        )}
+
+        {/* View 2: Main 2-Column Split View: Desktop Engine Controls + Instagram Mobile Simulator */}
+        {activeMainTab === 'simulator' && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-in fade-in duration-300">
           
           {/* ============================================================== */}
           {/* LEFT COLUMN: Engine Dashboard Controls & Deep Analytics (7 Cols) */}
@@ -1058,6 +1101,7 @@ export default function DashboardPreview() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

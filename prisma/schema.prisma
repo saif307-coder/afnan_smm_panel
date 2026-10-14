@@ -29,3 +29,50 @@ model ReelCampaign {
   updatedAt              DateTime @updatedAt
   createdAt              DateTime @default(now())
 }
+
+// ─── Phase 2: Admin Settings ────────────────────────────────────────────────
+// Singleton row storing default percentage ratios for metric calculations.
+// Only one row should exist (enforced at the application layer).
+model AdminSettings {
+  id                    String   @id @default(cuid())
+  likesPercentage       Float    @default(3.4)
+  savesPercentage       Float    @default(2.8)
+  commentsPercentage    Float    @default(0.12)
+  sharesPercentage      Float    @default(0.95)
+  repostsPercentage     Float    @default(0.35)
+  followsPercentage     Float    @default(0.025)
+  viewersPercentage     Float    @default(67.5)
+  avgWatchTimeRatio     Float    @default(0.7)
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+}
+
+// ─── Phase 2: 3rd-Party SMM Providers ───────────────────────────────────────
+// Stores credentials for external SMM panel provider APIs.
+model SmmProvider {
+  id          String           @id @default(cuid())
+  name        String
+  apiUrl      String
+  apiKey      String
+  isActive    Boolean          @default(true)
+  mappings    ServiceMapping[]
+  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime         @default(now())
+}
+
+// ─── Phase 2: Service Mappings ──────────────────────────────────────────────
+// Maps internal metric types (VIEWS, LIKES, etc.) to provider-specific service IDs.
+// Each provider can have at most one mapping per metric type.
+model ServiceMapping {
+  id             String      @id @default(cuid())
+  providerId     String
+  provider       SmmProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  metricType     String      // e.g. "VIEWS", "LIKES", "SAVES", "COMMENTS", "SHARES", "REPOSTS", "FOLLOWS"
+  serviceId      String      // The provider's external service ID
+  costPer1000    Float       @default(0)
+  isActive       Boolean     @default(true)
+  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime    @default(now())
+
+  @@unique([providerId, metricType])
+}
