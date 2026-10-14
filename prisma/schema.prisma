@@ -1,0 +1,31 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model ReelCampaign {
+  id                     String   @id @default(cuid())
+  reelUrl                String?
+  collaborationText      String   @default("Collaboration with cinematic.edits.fx and songs_movies.byte")
+  videoDurationSeconds   Int      @default(60)
+  views                  Int      @default(100000)
+  viewers                Int
+  avgWatchTimeSeconds    Int
+  follows                Int
+  likes                  Int      @default(1500)
+  comments               Int      @default(0)
+  reposts                Int      @default(15)
+  shares                 Int      @default(49)
+  saves                  Int      @default(144)
+  followersPercentage    Float    @default(0.4)
+  nonFollowersPercentage Float    @default(99.6)
+  countriesJson          String
+  graphDataJson          String
+  serviceStatus          String   @default("IDLE")
+  updatedAt              DateTime @updatedAt
+  createdAt              DateTime @default(now())
+}
