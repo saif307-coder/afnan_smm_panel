@@ -1,7 +1,9 @@
+
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { calculateReelMetrics } from '@/lib/metricsEngine';
 import { handleOptions, jsonResponse } from '@/lib/cors';
+import { getFallbackCampaign } from '@/lib/fallbackStore';
 
 export async function OPTIONS() {
   return handleOptions();
@@ -9,6 +11,10 @@ export async function OPTIONS() {
 
 export async function GET(_req: NextRequest) {
   try {
+    if (!prisma) {
+      throw new Error('PrismaClient is not initialized');
+    }
+
     let campaign = await prisma.reelCampaign.findFirst({
       orderBy: { updatedAt: 'desc' },
     });
@@ -41,18 +47,23 @@ export async function GET(_req: NextRequest) {
       });
     }
 
+    // Keep memory store synchronized with latest DB data
+    globalThis.__campaignFallbackStore = campaign;
+
     return jsonResponse({
       success: true,
       data: campaign,
     });
   } catch (error) {
-    console.error('Error fetching current campaign:', error);
-    return jsonResponse(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to fetch campaign',
-      },
-      { status: 500 }
+    console.warn(
+      'Database query failed (e.g. Vercel read-only filesystem). Serving from In-Memory Global State Fallback store:',
+      error instanceof Error ? error.message : error
     );
+    const fallbackData = getFallbackCampaign();
+    return jsonResponse({
+      success: true,
+      data: fallbackData,
+      source: 'in-memory-fallback',
+    });
   }
 }

@@ -1,38 +1,59 @@
+
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { calculateReelMetrics } from '@/lib/metricsEngine';
 import { handleOptions, jsonResponse } from '@/lib/cors';
+import { updateFallbackCampaign } from '@/lib/fallbackStore';
 
 export async function OPTIONS() {
   return handleOptions();
 }
 
 export async function POST(req: NextRequest) {
+  let body: Record<string, unknown> = {};
   try {
-    const body = await req.json().catch(() => ({}));
+    body = await req.json();
+  } catch {
+    body = {};
+  }
+
+  try {
+    if (!prisma) {
+      throw new Error('PrismaClient is not initialized');
+    }
 
     // Find the current campaign if it exists
     const current = await prisma.reelCampaign.findFirst({
       orderBy: { updatedAt: 'desc' },
     });
 
-    const views = typeof body.views === 'number' ? Math.max(0, body.views) : (current?.views ?? 100000);
+    const views =
+      typeof body.views === 'number'
+        ? Math.max(0, body.views)
+        : (current?.views ?? 100000);
     const videoDurationSeconds =
       typeof body.videoDurationSeconds === 'number'
         ? Math.max(1, body.videoDurationSeconds)
         : (current?.videoDurationSeconds ?? 60);
 
-    const countryLabelFormat = body.countryLabelFormat === 'United States' ? 'United States' : 'USA';
+    const countryLabelFormat =
+      body.countryLabelFormat === 'United States' ? 'United States' : 'USA';
 
     // Calculate metrics using strict mathematical engine
-    const computed = calculateReelMetrics(views, videoDurationSeconds, undefined, countryLabelFormat);
+    const computed = calculateReelMetrics(
+      views,
+      videoDurationSeconds,
+      undefined,
+      countryLabelFormat
+    );
 
     const updateData = {
-      reelUrl: body.reelUrl !== undefined ? body.reelUrl : (current?.reelUrl ?? null),
+      reelUrl: body.reelUrl !== undefined ? (body.reelUrl as string | null) : (current?.reelUrl ?? null),
       collaborationText:
         body.collaborationText !== undefined
           ? String(body.collaborationText)
-          : (current?.collaborationText ?? 'Collaboration with cinematic.edits.fx and songs_movies.byte'),
+          : (current?.collaborationText ??
+            'Collaboration with cinematic.edits.fx and songs_movies.byte'),
       videoDurationSeconds,
       views,
       viewers: computed.viewers,
@@ -47,7 +68,9 @@ export async function POST(req: NextRequest) {
       nonFollowersPercentage: computed.nonFollowersPercentage,
       countriesJson: computed.countriesJson,
       graphDataJson: computed.graphDataJson,
-      serviceStatus: body.serviceStatus ? String(body.serviceStatus) : (current?.serviceStatus ?? 'IDLE'),
+      serviceStatus: body.serviceStatus
+        ? String(body.serviceStatus)
+        : (current?.serviceStatus ?? 'IDLE'),
     };
 
     let updatedCampaign;
@@ -62,19 +85,25 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Keep memory fallback store in sync
+    globalThis.__campaignFallbackStore = updatedCampaign;
+
     return jsonResponse({
       success: true,
       data: updatedCampaign,
       computedTicks: computed.ticks,
     });
   } catch (error) {
-    console.error('Error updating campaign:', error);
-    return jsonResponse(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to update campaign',
-      },
-      { status: 500 }
+    console.warn(
+      'Database update failed (e.g. Vercel read-only filesystem). Applying update to In-Memory Global State Fallback store:',
+      error instanceof Error ? error.message : error
     );
+    const { data: updatedFallback, computed } = updateFallbackCampaign(body);
+    return jsonResponse({
+      success: true,
+      data: updatedFallback,
+      computedTicks: computed.ticks,
+      source: 'in-memory-fallback',
+    });
   }
 }
