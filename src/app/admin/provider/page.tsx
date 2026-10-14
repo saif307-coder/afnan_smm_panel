@@ -117,6 +117,15 @@ export default function AdminProviderPage() {
   const [servicesError, setServicesError] = useState<string | null>(null);
   const itemsPerPage = 25;
 
+  // Creation form state for initial setup or empty database
+  const [newProviderForm, setNewProviderForm] = useState({
+    name: 'SMM Pro Provider (Official Production)',
+    apiUrl: 'https://my.smmgen.com/api/v2',
+    apiKey: '',
+    isActive: true,
+  });
+  const [showNewApiKey, setShowNewApiKey] = useState(false);
+
   const loadProviderData = async () => {
     setLoading(true);
     try {
@@ -210,8 +219,76 @@ export default function AdminProviderPage() {
     }
   };
 
+  const handleCreateProvider = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (
+      !newProviderForm.name.trim() ||
+      !newProviderForm.apiUrl.trim() ||
+      !newProviderForm.apiKey.trim()
+    ) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: 'Please fill in Provider Label, API Base URL, and API Secret Key',
+      });
+      return;
+    }
+
+    setSavingProvider(true);
+    setToast(null);
+
+    try {
+      const res = await fetch('/api/admin/providers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newProviderForm.name.trim(),
+          apiUrl: newProviderForm.apiUrl.trim(),
+          apiKey: newProviderForm.apiKey.trim(),
+          isActive: newProviderForm.isActive,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const errorMsg = data.errors
+          ? data.errors.map((e: any) => e.message).join(', ')
+          : data.error || 'Failed to create provider';
+        throw new Error(errorMsg);
+      }
+
+      setProvider(data.data);
+      setToast({
+        show: true,
+        type: 'success',
+        message: 'Provider credentials saved successfully! You can now configure service IDs below.',
+      });
+
+      // Reload provider data to seed mappings and test balance
+      await loadProviderData();
+    } catch (err) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to save provider credentials',
+      });
+    } finally {
+      setSavingProvider(false);
+    }
+  };
+
   const handleTestConnection = async () => {
-    if (!provider) return;
+    const targetUrl = provider?.apiUrl || newProviderForm.apiUrl;
+    const targetKey = provider?.apiKey || newProviderForm.apiKey;
+    if (!targetUrl || !targetKey) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: 'Enter API Base URL and Secret Key before testing connection',
+      });
+      return;
+    }
+
     setTestingConnection(true);
     setTestResult(null);
 
@@ -220,8 +297,8 @@ export default function AdminProviderPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          apiUrl: provider.apiUrl,
-          apiKey: provider.apiKey,
+          apiUrl: targetUrl,
+          apiKey: targetKey,
         }),
       });
 
@@ -470,7 +547,10 @@ export default function AdminProviderPage() {
           <button
             type="button"
             onClick={handleTestConnection}
-            disabled={testingConnection || !provider}
+            disabled={
+              testingConnection ||
+              (!provider && (!newProviderForm.apiUrl.trim() || !newProviderForm.apiKey.trim()))
+            }
             className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 transition w-fit disabled:opacity-50"
           >
             {testingConnection ? (
@@ -487,7 +567,12 @@ export default function AdminProviderPage() {
           </button>
         </div>
 
-        {provider ? (
+        {loading ? (
+          <div className="py-12 text-center space-y-3">
+            <Loader2 className="w-6 h-6 animate-spin text-emerald-400 mx-auto" />
+            <p className="text-xs text-slate-400">Loading provider configuration...</p>
+          </div>
+        ) : provider ? (
           <form onSubmit={handleProviderSave} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Provider Name */}
@@ -512,7 +597,7 @@ export default function AdminProviderPage() {
                   type="url"
                   value={provider.apiUrl}
                   onChange={(e) => setProvider({ ...provider, apiUrl: e.target.value })}
-                  placeholder="https://smmproprovider.online/api/v2"
+                  placeholder="https://my.smmgen.com/api/v2"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 focus:border-indigo-500 text-xs font-mono text-white outline-none transition"
                 />
               </div>
@@ -573,9 +658,106 @@ export default function AdminProviderPage() {
             </div>
           </form>
         ) : (
-          <div className="text-center py-6 text-xs text-slate-400">
-            {loading ? 'Loading provider configuration...' : 'No active SMM provider found.'}
-          </div>
+          /* Empty Database / Initial Setup Form */
+          <form onSubmit={handleCreateProvider} className="space-y-4">
+            <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center gap-3">
+              <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
+              <div>
+                <div className="text-xs font-bold text-white">Initialize SMM Provider</div>
+                <div className="text-[11px] text-indigo-300/80">
+                  No active provider found in the database. Enter your 3rd-party SMM credentials to activate automated order dispatch.
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Provider Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300">
+                  Provider Label <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newProviderForm.name}
+                  onChange={(e) => setNewProviderForm({ ...newProviderForm, name: e.target.value })}
+                  placeholder="e.g. SMM Pro Provider"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 focus:border-indigo-500 text-xs text-white outline-none transition"
+                />
+              </div>
+
+              {/* API Base URL */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-blue-400" />
+                  <span>API Base URL <span className="text-rose-400">*</span></span>
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={newProviderForm.apiUrl}
+                  onChange={(e) => setNewProviderForm({ ...newProviderForm, apiUrl: e.target.value })}
+                  placeholder="https://my.smmgen.com/api/v2"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 focus:border-indigo-500 text-xs font-mono text-white outline-none transition"
+                />
+              </div>
+            </div>
+
+            {/* API Secret Key */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                <span>API Secret Key <span className="text-rose-400">*</span></span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showNewApiKey ? 'text' : 'password'}
+                  required
+                  value={newProviderForm.apiKey}
+                  onChange={(e) => setNewProviderForm({ ...newProviderForm, apiKey: e.target.value })}
+                  placeholder="Enter 32-character provider API key"
+                  className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 focus:border-indigo-500 text-xs font-mono text-white outline-none transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewApiKey(!showNewApiKey)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300"
+                >
+                  {showNewApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={newProviderForm.isActive}
+                  onChange={(e) => setNewProviderForm({ ...newProviderForm, isActive: e.target.checked })}
+                  className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0"
+                />
+                <span>Set as Default Active Dispatcher</span>
+              </label>
+
+              <button
+                type="submit"
+                disabled={savingProvider}
+                className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-600/20 active:scale-95 disabled:opacity-50 transition flex items-center gap-2"
+              >
+                {savingProvider ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Save Provider Credentials</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         )}
       </div>
 
