@@ -21,6 +21,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Zap,
+  Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   calculateQuantities,
@@ -61,11 +63,34 @@ export default function OrderForm() {
   const [isLoadedFromApi, setIsLoadedFromApi] = useState<boolean>(false);
   const [loadingSettings, setLoadingSettings] = useState<boolean>(true);
 
-  // Submission feedback state (no 3rd party API yet)
-  const [submissionFeedback, setSubmissionFeedback] = useState<{
+  // Loading & Submission state (Phase 4)
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [orderResult, setOrderResult] = useState<{
+    success: boolean;
+    message: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data?: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    dispatch?: any;
+  } | null>(null);
+
+  // Toast notification state
+  const [toast, setToast] = useState<{
     show: boolean;
-    orderSummary?: CalculatedQuantities & { reelUrl?: string };
-  }>({ show: false });
+    type: 'success' | 'error' | 'info';
+    title: string;
+    message: string;
+  } | null>(null);
+
+  // Auto-dismiss toast after 6 seconds
+  useEffect(() => {
+    if (toast?.show) {
+      const timer = setTimeout(() => {
+        setToast((prev) => (prev ? { ...prev, show: false } : null));
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast?.show]);
 
   // 1. Fetch default percentage ratios from Phase 2 Admin API (/api/admin/settings)
   useEffect(() => {
@@ -138,16 +163,79 @@ export default function OrderForm() {
     setPercentages(adminDefaults);
   }, [adminDefaults]);
 
-  // Mock Submit (Phase 3 requirement: do not integrate 3rd party dispatch yet)
-  const handleSubmit = (e: React.FormEvent) => {
+  // Phase 4: Submit Bundled Order to POST /api/orders with Automated Provider Dispatch
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmissionFeedback({
-      show: true,
-      orderSummary: {
-        ...calculated,
-        reelUrl: reelUrl.trim() || undefined,
-      },
-    });
+    if (baseViews <= 0) {
+      setToast({
+        show: true,
+        type: 'error',
+        title: 'Invalid Base Views',
+        message: 'Please enter a valid base view count greater than 0.',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setOrderResult(null);
+
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetReelUrl: reelUrl.trim() || undefined,
+          baseViews,
+          percentages,
+          autoDispatch: true,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok && !json.data) {
+        throw new Error(json.error || 'Failed to submit order');
+      }
+
+      setOrderResult(json);
+
+      const status = json.dispatch?.overallStatus;
+      if (status === 'COMPLETED') {
+        setToast({
+          show: true,
+          type: 'success',
+          title: 'Order Dispatched Successfully!',
+          message: `All services placed with provider. Total Cost: $${Number(json.dispatch.totalCost || 0).toFixed(4)}`,
+        });
+      } else if (status === 'PARTIAL') {
+        setToast({
+          show: true,
+          type: 'info',
+          title: 'Order Partially Dispatched',
+          message: `${json.dispatch.successfulItems} services succeeded, ${json.dispatch.failedItems} failed. Check dispatch logs below.`,
+        });
+      } else {
+        // Logged in DB, provider rejected (e.g. balance 0)
+        setToast({
+          show: true,
+          type: 'info',
+          title: 'Order Recorded in Database',
+          message: json.data?.errorMessage
+            ? `Provider status: ${json.data.errorMessage}`
+            : 'Order saved in DB. Provider dispatch failed (see report below).',
+        });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setToast({
+        show: true,
+        type: 'error',
+        title: 'Order Submission Error',
+        message: msg,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -409,11 +497,21 @@ export default function OrderForm() {
               <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
                 <button
                   type="submit"
-                  className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 hover:from-blue-500 hover:via-indigo-500 hover:to-fuchsia-500 active:scale-[0.98] transition shadow-lg shadow-indigo-600/30"
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 hover:from-blue-500 hover:via-indigo-500 hover:to-fuchsia-500 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition shadow-lg shadow-indigo-600/30"
                 >
-                  <Send className="w-4 h-4" />
-                  <span>Review & Stage Order</span>
-                  <ArrowRight className="w-4 h-4" />
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Dispatching to SMM Provider...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      <span>Place & Dispatch Order</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -561,84 +659,151 @@ export default function OrderForm() {
             </div>
           </div>
 
-          {/* Submission Feedback Modal/Alert */}
-          {submissionFeedback.show && submissionFeedback.orderSummary && (
-            <div className="p-5 rounded-2xl bg-slate-900 border-2 border-emerald-500/50 shadow-2xl space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
-              <div className="flex items-start justify-between">
+          {/* Toast Notification Alert */}
+          {toast?.show && (
+            <div
+              className={`p-4 rounded-2xl border shadow-2xl flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-3 duration-300 ${
+                toast.type === 'success'
+                  ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                  : toast.type === 'error'
+                  ? 'bg-rose-950/80 border-rose-500/50 text-rose-200'
+                  : 'bg-indigo-950/80 border-indigo-500/50 text-indigo-200'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 rounded-lg bg-white/10 shrink-0 mt-0.5">
+                  {toast.type === 'success' ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  ) : toast.type === 'error' ? (
+                    <AlertTriangle className="w-5 h-5 text-rose-400" />
+                  ) : (
+                    <Info className="w-5 h-5 text-indigo-400" />
+                  )}
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">{toast.title}</h4>
+                  <p className="text-xs opacity-90 mt-0.5 leading-relaxed">{toast.message}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setToast((prev) => (prev ? { ...prev, show: false } : null))}
+                className="text-xs opacity-70 hover:opacity-100 px-2 py-1 rounded bg-black/20"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Detailed SMM Provider Dispatch Report (Phase 4) */}
+          {orderResult?.data && (
+            <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-700/80 shadow-2xl space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="flex items-start justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
-                    <CheckCircle2 className="w-5 h-5" />
+                  <div
+                    className={`p-2 rounded-xl ${
+                      orderResult.data.status === 'COMPLETED'
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : orderResult.data.status === 'PARTIAL'
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'bg-rose-500/20 text-rose-400'
+                    }`}
+                  >
+                    {orderResult.data.status === 'COMPLETED' ? (
+                      <CheckCircle2 className="w-5 h-5" />
+                    ) : orderResult.data.status === 'PARTIAL' ? (
+                      <AlertTriangle className="w-5 h-5" />
+                    ) : (
+                      <Info className="w-5 h-5" />
+                    )}
                   </div>
                   <div>
-                    <h3 className="font-bold text-white text-base">Order Staged Successfully</h3>
-                    <p className="text-xs text-slate-300">Ready for Phase 4 3rd-Party API Dispatch</p>
+                    <h3 className="font-bold text-white text-base">
+                      Order #{orderResult.data.id.slice(-8)}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Target Reel: {orderResult.data.targetReelUrl || 'Default Session Reel'}
+                    </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSubmissionFeedback({ show: false })}
-                  className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800"
+
+                <span
+                  className={`text-xs px-2.5 py-1 rounded-full font-mono font-bold uppercase tracking-wider ${
+                    orderResult.data.status === 'COMPLETED'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : orderResult.data.status === 'PARTIAL'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                  }`}
                 >
-                  Dismiss
-                </button>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-950 font-mono text-xs space-y-1.5 text-slate-300 border border-slate-800">
-                <div className="flex justify-between border-b border-slate-800/80 pb-1 text-slate-400">
-                  <span>Target Reel:</span>
-                  <span className="text-white truncate max-w-[200px]">
-                    {submissionFeedback.orderSummary.reelUrl || 'Default Session Reel'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Base Views:</span>
-                  <span className="text-blue-400 font-bold">
-                    {submissionFeedback.orderSummary.views.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Target Likes:</span>
-                  <span className="text-rose-400 font-bold">
-                    {submissionFeedback.orderSummary.likes.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Target Saves:</span>
-                  <span className="text-amber-400 font-bold">
-                    {submissionFeedback.orderSummary.saves.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Target Shares:</span>
-                  <span className="text-sky-400 font-bold">
-                    {submissionFeedback.orderSummary.shares.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Target Reposts:</span>
-                  <span className="text-emerald-400 font-bold">
-                    {submissionFeedback.orderSummary.reposts.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Target Comments:</span>
-                  <span className="text-purple-400 font-bold">
-                    {submissionFeedback.orderSummary.comments.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between border-t border-slate-800/80 pt-1">
-                  <span>Target Followers:</span>
-                  <span className="text-fuchsia-400 font-bold">
-                    {submissionFeedback.orderSummary.followers.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 text-xs text-emerald-400/90 bg-emerald-950/40 p-2.5 rounded-lg border border-emerald-500/20">
-                <Info className="w-4 h-4 shrink-0" />
-                <span>
-                  Execution rule adhered to: 3rd-party API order submission will be implemented in Phase 4.
+                  {orderResult.data.status}
                 </span>
               </div>
+
+              {/* Provider Info Banner */}
+              <div className="flex items-center justify-between text-xs px-3.5 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
+                <div className="text-slate-400">
+                  Provider:{' '}
+                  <strong className="text-slate-200">
+                    {orderResult.dispatch?.providerName || 'smmproprovider.online'}
+                  </strong>
+                </div>
+                <div className="text-slate-400">
+                  Total Billed:{' '}
+                  <strong className="text-emerald-400 font-mono">
+                    ${Number(orderResult.data.totalCost || 0).toFixed(4)}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Dispatch Items Breakdown */}
+              {orderResult.dispatch?.items && orderResult.dispatch.items.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Bundle Dispatch Splitting Breakdown:
+                  </div>
+
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                    {orderResult.dispatch.items.map(
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (item: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80 text-xs font-mono"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                item.status === 'SUCCESS'
+                                  ? 'bg-emerald-400'
+                                  : item.status === 'SKIPPED'
+                                  ? 'bg-slate-500'
+                                  : 'bg-rose-400'
+                              }`}
+                            />
+                            <span className="font-bold text-white">{item.metricType}</span>
+                            <span className="text-slate-400">
+                              (Qty: {item.quantity.toLocaleString()} | Svc #{item.serviceId})
+                            </span>
+                          </div>
+
+                          <div className="text-right">
+                            {item.status === 'SUCCESS' ? (
+                              <span className="text-emerald-400 font-bold">
+                                Order #{item.providerOrderId}
+                              </span>
+                            ) : (
+                              <span className="text-rose-400 text-[11px] max-w-[180px] truncate block" title={item.error}>
+                                {item.error || 'Failed'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

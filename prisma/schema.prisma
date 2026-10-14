@@ -56,6 +56,7 @@ model SmmProvider {
   apiKey      String
   isActive    Boolean          @default(true)
   mappings    ServiceMapping[]
+  orders      Order[]
   updatedAt   DateTime         @updatedAt
   createdAt   DateTime         @default(now())
 }
@@ -76,3 +77,28 @@ model ServiceMapping {
 
   @@unique([providerId, metricType])
 }
+
+// ─── Phase 4: Orders & Dispatch History ─────────────────────────────────────
+// Tracks bundled orders, calculated engagement breakdowns, and provider responses.
+model Order {
+  id                    String       @id @default(cuid())
+  targetReelUrl         String?
+  baseViews             Int
+  percentagesJson       String
+  calculatedMetricsJson String?
+  likes                 Int          @default(0)
+  saves                 Int          @default(0)
+  shares                Int          @default(0)
+  reposts               Int          @default(0)
+  comments              Int          @default(0)
+  followers             Int          @default(0)
+  totalCost             Float        @default(0)
+  status                String       @default("PENDING") // PENDING, PROCESSING, COMPLETED, PARTIAL, FAILED
+  providerId            String?
+  provider              SmmProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  providerResponsesJson String?      // Detailed JSON log of all external provider API calls & order IDs
+  errorMessage          String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+}
+
