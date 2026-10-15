@@ -153,7 +153,12 @@ export default function AdminOrdersPage() {
     }
   };
 
-  const handleRefreshAll = () => {
+  const handleRefreshAll = async () => {
+    try {
+      await fetch('/api/cron/sync-orders', { method: 'POST' });
+    } catch {
+      // non-blocking
+    }
     fetchOrders();
     fetchLiveBalance();
   };
@@ -330,6 +335,26 @@ export default function AdminOrdersPage() {
     fetchOrders();
     fetchLiveBalance();
   }, []);
+
+  // 30s live auto-sync polling while any order is PROCESSING or PENDING
+  useEffect(() => {
+    const hasActiveOrders = orders.some(
+      (o) => o.status === 'PROCESSING' || o.status === 'PENDING'
+    );
+    if (!hasActiveOrders) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await fetch('/api/cron/sync-orders', { method: 'POST' });
+      } catch {
+        // non-blocking
+      }
+      fetchOrders();
+      fetchLiveBalance();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [orders]);
 
   // Summary Metrics KPIs
   const stats = useMemo(() => {

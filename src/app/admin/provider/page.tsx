@@ -541,6 +541,16 @@ export default function AdminProviderPage() {
 
       const igServices = catalog.filter(isInstagramService);
 
+      const calculateSpeedScore = (s: ProviderService) => {
+        const text = `${s.category || ''} ${s.name || ''}`;
+        let score = 0;
+        if (/instant|super fast|ultra fast|\bfast\b/i.test(text)) score += 100;
+        if (/100k|200k|500k|1m\/day|1m|50k-200k|50k-500k|500k-1m|500k-2m|10k-100k/i.test(s.name || '')) score += 60;
+        if (/0-1 min|0-5 min|0-15 min|0-30 min|0-1hrs|0-1 hrs/i.test(s.name || '')) score += 40;
+        if (/slow|1-24|24-48|\bdrop\b|under maintenance|no cancel/i.test(s.name || '')) score -= 100;
+        return score;
+      };
+
       const findBest = (nameKeywords: string[], exclude: string[] = []) => {
         return igServices
           .filter((s) => {
@@ -550,6 +560,9 @@ export default function AdminProviderPage() {
             return matches && !isExcluded;
           })
           .sort((a, b) => {
+            const scoreA = calculateSpeedScore(a);
+            const scoreB = calculateSpeedScore(b);
+            if (scoreA !== scoreB) return scoreB - scoreA;
             const rateA = parseFloat(String(a.rate)) || 0;
             const rateB = parseFloat(String(b.rate)) || 0;
             const minA = parseInt(String(a.min || 0), 10) || 0;
@@ -575,13 +588,16 @@ export default function AdminProviderPage() {
           return true;
         })
         .sort((a, b) => {
-          const rateA = parseFloat(String(a.rate)) || 0;
-          const rateB = parseFloat(String(b.rate)) || 0;
+          const scoreA = calculateSpeedScore(a);
+          const scoreB = calculateSpeedScore(b);
+          if (scoreA !== scoreB) return scoreB - scoreA;
           const minA = parseInt(String(a.min || 0), 10) || 0;
           const minB = parseInt(String(b.min || 0), 10) || 0;
           const lowA = minA <= 100 ? 0 : 1;
           const lowB = minB <= 100 ? 0 : 1;
           if (lowA !== lowB) return lowA - lowB;
+          const rateA = parseFloat(String(a.rate)) || 0;
+          const rateB = parseFloat(String(b.rate)) || 0;
           return rateA - rateB;
         });
 

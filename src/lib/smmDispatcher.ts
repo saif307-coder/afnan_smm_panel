@@ -12,12 +12,12 @@ import { aggregateParentOrderStatus } from '@/utils/orderDeliveryProgress';
 
 export const DEFAULT_DISPATCHER_MAPPINGS: Record<string, { serviceId: string; costPer1000: number; minQuantity: number }> = {
   VIEWS: { serviceId: '12897', costPer1000: 0.0004, minQuantity: 10 },
-  LIKES: { serviceId: '14749', costPer1000: 0.0090, minQuantity: 10 },
+  LIKES: { serviceId: '14750', costPer1000: 0.0100, minQuantity: 10 },
   COMMENTS: { serviceId: '16946', costPer1000: 0.3498, minQuantity: 10 },
   SAVES: { serviceId: '9685', costPer1000: 0.0029, minQuantity: 10 },
   SHARES: { serviceId: '19608', costPer1000: 0.0010, minQuantity: 10 },
   REPOSTS: { serviceId: '14549', costPer1000: 0.2938, minQuantity: 1 },
-  FOLLOWERS: { serviceId: '18302', costPer1000: 0.1814, minQuantity: 10 },
+  FOLLOWERS: { serviceId: '17065', costPer1000: 0.2957, minQuantity: 10 },
 };
 
 export interface DispatchItemResult {
@@ -148,8 +148,46 @@ export function isInstagramService(service: { name?: string; category?: string }
 }
 
 /**
+ * Computes speed score for an Instagram service item based on keywords.
+ * Prioritizes delivery speed and fast startup, while penalizing slow queues.
+ * +100 points: Instant / Super Fast / Ultra Fast / Fast
+ * +60 points: High daily speed (100k, 200k, 500k, 1m/day, 50k-200k)
+ * +40 points: Fast start time (0-1 min, 0-5 min, 0-15 min, 0-30 min)
+ * -100 points: Slow queues, drop, maintenance
+ */
+export function calculateSpeedScore(service: { name?: string; category?: string }): number {
+  const name = service.name || '';
+  const category = service.category || '';
+  const text = `${category} ${name}`;
+
+  let score = 0;
+
+  // +100 points if name/category contains instant, super fast, ultra fast, fast
+  if (/instant|super fast|ultra fast|\bfast\b/i.test(text)) {
+    score += 100;
+  }
+
+  // +60 points if name contains high daily speed
+  if (/100k|200k|500k|1m\/day|1m|50k-200k|50k-500k|500k-1m|500k-2m|10k-100k/i.test(name)) {
+    score += 60;
+  }
+
+  // +40 points if start time in name is fast
+  if (/0-1 min|0-5 min|0-15 min|0-30 min|0-1hrs|0-1 hrs/i.test(name)) {
+    score += 40;
+  }
+
+  // -100 points (penalize) if name contains slow queues or maintenance
+  if (/slow|1-24|24-48|\bdrop\b|under maintenance|no cancel/i.test(name)) {
+    score -= 100;
+  }
+
+  return score;
+}
+
+/**
  * Dynamically resolves candidate active, working Instagram services for a metric,
- * optionally excluding specific service IDs.
+ * ranked by Delivery Speed FIRST, then cost, optionally excluding specific service IDs.
  */
 export function matchCandidateActiveServices(
   services: ProviderServiceItem[],
@@ -166,25 +204,43 @@ export function matchCandidateActiveServices(
     return isInstagramService(s);
   });
 
-  const filterByNameKeywords = (nameKeywords: string[], exclude: string[] = [], preferLowMin = true) => {
+  const filterByNameKeywords = (
+    nameKeywords: string[],
+    exclude: string[] = [],
+    maxRate = 1.50,
+    maxMinQty = 10
+  ) => {
     return igServices
       .filter((s) => {
         const name = (s.name || '').toLowerCase();
         const matches = nameKeywords.some((k) => name.includes(k.toLowerCase()));
         if (!matches) return false;
         const isExcluded = exclude.some((e) => name.includes(e.toLowerCase()));
-        return !isExcluded;
+        if (isExcluded) return false;
+        const rate = parseFloat(String(s.rate)) || 0;
+        if (rate > maxRate) return false;
+        const min = parseInt(String(s.min || 0), 10) || 0;
+        if (min > maxMinQty) return false;
+        return true;
       })
       .sort((a, b) => {
-        const rateA = parseFloat(String(a.rate)) || 0;
-        const rateB = parseFloat(String(b.rate)) || 0;
+        // Priority 1: Delivery Speed Score (Highest first)
+        const scoreA = calculateSpeedScore(a);
+        const scoreB = calculateSpeedScore(b);
+        if (scoreA !== scoreB) {
+          return scoreB - scoreA;
+        }
+
+        // Priority 2: Smallest min quantity
         const minA = parseInt(String(a.min || 0), 10) || 0;
         const minB = parseInt(String(b.min || 0), 10) || 0;
-        if (preferLowMin) {
-          const lowA = minA <= 10 ? 0 : 1;
-          const lowB = minB <= 10 ? 0 : 1;
-          if (lowA !== lowB) return lowA - lowB;
-        }
+        const lowA = minA <= maxMinQty ? 0 : 1;
+        const lowB = minB <= maxMinQty ? 0 : 1;
+        if (lowA !== lowB) return lowA - lowB;
+
+        // Priority 3: Lowest cost
+        const rateA = parseFloat(String(a.rate)) || 0;
+        const rateB = parseFloat(String(b.rate)) || 0;
         return rateA - rateB;
       });
   };
@@ -208,34 +264,50 @@ export function matchCandidateActiveServices(
           const isOtherMetric = /like|save|comment|auto\b/i.test(name);
           if (isOtherMetric) return false;
 
+          const rate = parseFloat(String(s.rate)) || 0;
+          if (rate > 1.50) return false;
+
+          const min = parseInt(String(s.min || 0), 10) || 0;
+          if (min > 100) return false;
+
           return true;
         })
         .sort((a, b) => {
-          const rateA = parseFloat(String(a.rate)) || 0;
-          const rateB = parseFloat(String(b.rate)) || 0;
+          // Priority 1: Speed Score
+          const scoreA = calculateSpeedScore(a);
+          const scoreB = calculateSpeedScore(b);
+          if (scoreA !== scoreB) {
+            return scoreB - scoreA;
+          }
+
+          // Priority 2: Min Qty
           const minA = parseInt(String(a.min || 0), 10) || 0;
           const minB = parseInt(String(b.min || 0), 10) || 0;
           const lowA = minA <= 100 ? 0 : 1;
           const lowB = minB <= 100 ? 0 : 1;
           if (lowA !== lowB) return lowA - lowB;
+
+          // Priority 3: Rate
+          const rateA = parseFloat(String(a.rate)) || 0;
+          const rateB = parseFloat(String(b.rate)) || 0;
           return rateA - rateB;
         });
     }
     case 'LIKES':
-      return filterByNameKeywords(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save']);
+      return filterByNameKeywords(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save'], 1.50, 10);
     case 'COMMENTS':
-      return filterByNameKeywords(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian']);
+      return filterByNameKeywords(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian'], 1.50, 10);
     case 'SAVES':
-      return filterByNameKeywords(['saves', 'save'], ['story', 'auto', 'view', 'like']);
+      return filterByNameKeywords(['saves', 'save'], ['story', 'auto', 'view', 'like'], 1.50, 10);
     case 'SHARES':
-      return filterByNameKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
+      return filterByNameKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok'], 1.50, 10);
     case 'REPOSTS': {
-      const reposts = filterByNameKeywords(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter']);
-      return reposts.length > 0 ? reposts : filterByNameKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
+      const reposts = filterByNameKeywords(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter'], 1.50, 10);
+      return reposts.length > 0 ? reposts : filterByNameKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok'], 1.50, 10);
     }
     case 'FOLLOWERS':
     case 'FOLLOWS':
-      return filterByNameKeywords(['followers', 'follower'], ['story', 'auto']);
+      return filterByNameKeywords(['followers', 'follower'], ['story', 'auto'], 1.50, 10);
     default:
       return [];
   }

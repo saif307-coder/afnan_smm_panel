@@ -65,9 +65,19 @@ export default function OrderTracker() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
 
-  const fetchOrders = async () => {
-    setLoading(true);
+  const [syncing, setSyncing] = useState(false);
+
+  const syncAndFetchOrders = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    setSyncing(true);
     try {
+      // 1. Trigger live provider sync first
+      try {
+        await fetch('/api/cron/sync-orders', { method: 'POST' });
+      } catch {
+        // non-blocking
+      }
+      // 2. Load fresh orders from database
       const res = await fetch('/api/orders?limit=50');
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
@@ -82,13 +92,28 @@ export default function OrderTracker() {
     } catch (err) {
       console.error('Failed to load orders for tracker:', err);
     } finally {
-      setLoading(false);
+      setSyncing(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOrders();
+    syncAndFetchOrders();
   }, []);
+
+  // 30s live auto-sync polling while any order is PROCESSING or PENDING
+  useEffect(() => {
+    const hasActiveOrders = orders.some(
+      (o) => o.status === 'PROCESSING' || o.status === 'PENDING'
+    );
+    if (!hasActiveOrders) return;
+
+    const interval = setInterval(() => {
+      syncAndFetchOrders(false);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [orders]);
 
   const toggleExpand = (orderId: string) => {
     setExpandedOrders((prev) => ({
@@ -311,12 +336,12 @@ export default function OrderTracker() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchOrders}
-            disabled={loading}
+            onClick={() => syncAndFetchOrders(true)}
+            disabled={loading || syncing}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 border border-slate-700 transition"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh Status</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading || syncing ? 'animate-spin' : ''}`} />
+            <span>{syncing ? 'Syncing...' : 'Refresh Status'}</span>
           </button>
 
           <Link
