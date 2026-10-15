@@ -222,7 +222,8 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
   const errorMessage = errors.length > 0 ? errors.join(' | ') : null;
 
   // 6. Update Order and create/update individual OrderItem records in Prisma Database
-  await prisma.$transaction(async (tx) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await prisma.$transaction(async (tx: any) => {
     await tx.order.update({
       where: { id: order.id },
       data: {
