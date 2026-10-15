@@ -117,14 +117,35 @@ export async function fetchLiveProviderServices(
 }
 
 /**
- * Dynamically resolves the best active, cheapest service for a metric.
+ * Normalizes an Instagram link by ensuring a harmless unique tracking parameter (?igshid=...)
+ * is attached so duplicate active-link locks on the same Reel URL do not block dispatch.
  */
-export function matchBestActiveService(
+export function normalizeLinkWithTrackingParam(link: string): string {
+  try {
+    const url = new URL(link);
+    const uniqueVal = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    url.searchParams.set('igshid', uniqueVal);
+    return url.toString();
+  } catch {
+    const sep = link.includes('?') ? '&' : '?';
+    return `${link}${sep}igshid=${Date.now().toString(36)}`;
+  }
+}
+
+/**
+ * Dynamically resolves candidate active, working services for a metric, optionally excluding specific service IDs.
+ */
+export function matchCandidateActiveServices(
   services: ProviderServiceItem[],
-  metricType: string
-): ProviderServiceItem | null {
+  metricType: string,
+  excludeIds: string[] = []
+): ProviderServiceItem[] {
   const normMetric = metricType.toUpperCase();
+  const excludeSet = new Set(excludeIds.map((id) => String(id).replace(/[^0-9]/g, '').trim()));
+
   const igServices = services.filter((s) => {
+    const cleanId = String(s.service).replace(/[^0-9]/g, '').trim();
+    if (excludeSet.has(cleanId)) return false;
     const text = `${s.name || ''} ${s.category || ''}`.toLowerCase();
     return text.includes('instagram') || text.includes('reel') || text.includes('post');
   });
@@ -151,38 +172,225 @@ export function matchBestActiveService(
       });
   };
 
-  let candidates: ProviderServiceItem[] = [];
-
   switch (normMetric) {
     case 'VIEWS':
-      candidates = filterByKeywords(['views', 'view'], ['story', 'live', 'igtv', 'like', 'save', 'comment', 'auto']);
-      break;
+      return filterByKeywords(['views', 'view'], ['story', 'live', 'igtv', 'like', 'save', 'comment', 'auto']);
     case 'LIKES':
-      candidates = filterByKeywords(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save']);
-      break;
+      return filterByKeywords(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save']);
     case 'COMMENTS':
-      candidates = filterByKeywords(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian']);
-      break;
+      return filterByKeywords(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian']);
     case 'SAVES':
-      candidates = filterByKeywords(['saves', 'save'], ['story', 'auto']);
-      break;
+      return filterByKeywords(['saves', 'save'], ['story', 'auto']);
     case 'SHARES':
-      candidates = filterByKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
-      break;
+      return filterByKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
     case 'REPOSTS': {
       const reposts = filterByKeywords(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter']);
-      candidates = reposts.length > 0 ? reposts : filterByKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
-      break;
+      return reposts.length > 0 ? reposts : filterByKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
     }
     case 'FOLLOWERS':
     case 'FOLLOWS':
-      candidates = filterByKeywords(['followers', 'follower'], ['story', 'auto']);
-      break;
+      return filterByKeywords(['followers', 'follower'], ['story', 'auto']);
     default:
-      candidates = [];
+      return [];
+  }
+}
+
+/**
+ * Dynamically resolves the best active, cheapest service for a metric.
+ */
+export function matchBestActiveService(
+  services: ProviderServiceItem[],
+  metricType: string
+): ProviderServiceItem | null {
+  const candidates = matchCandidateActiveServices(services, metricType);
+  return candidates.length > 0 ? candidates[0] : null;
+}
+
+/**
+ * Smart Active-Link Failover routine:
+ * Triggered when provider responds with:
+ * "You have active order with this link. Please wait until order being completed."
+ * 
+ * 1. Queries live service catalog and tries up to 3 alternate low-cost services for the same metric.
+ * 2. If all alternate services also report active order lock, normalizes link with a unique tracking query param (?igshid=...) and retries.
+ */
+export async function handleActiveLinkFailoverAndRetry(
+  provider: { id: string; apiUrl: string; apiKey: string },
+  item: { metricType: string; quantity: number },
+  targetLink: string,
+  blockedServiceId: string
+): Promise<{
+  success: boolean;
+  orderId?: string | number;
+  cost?: number;
+  serviceId?: string;
+  error?: string;
+  rawResponse?: unknown;
+  usedLink?: string;
+}> {
+  const cleanBlockedId = String(blockedServiceId).replace(/[^0-9]/g, '').trim();
+  console.warn(
+    `[SMM Dispatcher Active-Link Failover] Active order lock detected on Svc #${cleanBlockedId} for ${item.metricType} on link "${targetLink}". Initiating failover...`
+  );
+
+  const services = await fetchLiveProviderServices(provider.apiUrl, provider.apiKey, provider.id, false);
+  const alternateCandidates = matchCandidateActiveServices(services, item.metricType, [cleanBlockedId]).slice(0, 3);
+
+  // Strategy 1: Sequentially retry with alternate candidate services on the target link
+  for (const alt of alternateCandidates) {
+    const cleanAltId = String(alt.service).replace(/[^0-9]/g, '').trim();
+    const altMin = parseInt(String(alt.min || 0), 10) || 0;
+    const altRate = parseFloat(String(alt.rate || 0)) || 0;
+
+    if (altMin > 0 && item.quantity < altMin) {
+      console.log(`[SMM Dispatcher Active-Link Failover] Candidate #${cleanAltId} min (${altMin}) > qty (${item.quantity}). Skipping candidate.`);
+      continue;
+    }
+
+    const estimatedCost = (item.quantity / 1000) * altRate;
+    console.log(`[SMM Dispatcher Active-Link Failover] Retrying ${item.metricType} with alternate service #${cleanAltId} ("${alt.name}")...`);
+
+    try {
+      const params = new URLSearchParams({
+        key: provider.apiKey,
+        action: 'add',
+        service: cleanAltId,
+        link: targetLink,
+        quantity: item.quantity.toString(),
+      });
+
+      const response = await fetch(provider.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      const text = await response.text();
+      let json: SmmApiResponse = {};
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { error: `Invalid JSON response: ${text.slice(0, 100)}` };
+      }
+
+      if (json.order !== undefined && json.order !== null) {
+        console.log(
+          `[SMM Dispatcher Active-Link Failover] SUCCESS! Alternate service #${cleanAltId} accepted order #${json.order}!`
+        );
+
+        // Update database mapping to working service
+        try {
+          await prisma.serviceMapping.upsert({
+            where: {
+              providerId_metricType: {
+                providerId: provider.id,
+                metricType: item.metricType.toUpperCase(),
+              },
+            },
+            update: {
+              serviceId: cleanAltId,
+              costPer1000: altRate,
+              minQuantity: altMin,
+              isActive: true,
+            },
+            create: {
+              providerId: provider.id,
+              metricType: item.metricType.toUpperCase(),
+              serviceId: cleanAltId,
+              costPer1000: altRate,
+              minQuantity: altMin,
+              isActive: true,
+            },
+          });
+        } catch {
+          // non-critical
+        }
+
+        return {
+          success: true,
+          orderId: json.order,
+          cost: estimatedCost,
+          serviceId: cleanAltId,
+          rawResponse: json,
+          usedLink: targetLink,
+        };
+      }
+
+      const errorMsg = String(json.error || '');
+      if (/active order with this link|wait until order being completed/i.test(errorMsg)) {
+        console.warn(`[SMM Dispatcher Active-Link Failover] Alternate service #${cleanAltId} also locked on exact link.`);
+      } else {
+        console.warn(`[SMM Dispatcher Active-Link Failover] Alternate service #${cleanAltId} returned: ${errorMsg}`);
+      }
+    } catch (err) {
+      console.error(`[SMM Dispatcher Active-Link Failover] Error dispatching alternate service #${cleanAltId}:`, err);
+    }
   }
 
-  return candidates.length > 0 ? candidates[0] : null;
+  // Strategy 2: Append or normalize unique tracking query param (?igshid=...)
+  const normalizedLink = normalizeLinkWithTrackingParam(targetLink);
+  console.log(`[SMM Dispatcher Active-Link Failover] Strategy 2: Retrying with normalized unique link "${normalizedLink}"...`);
+
+  const servicesToTry = [
+    cleanBlockedId,
+    ...alternateCandidates.map((c) => String(c.service).replace(/[^0-9]/g, '').trim()),
+  ];
+
+  for (const svcId of servicesToTry) {
+    if (!svcId) continue;
+    try {
+      const params = new URLSearchParams({
+        key: provider.apiKey,
+        action: 'add',
+        service: svcId,
+        link: normalizedLink,
+        quantity: item.quantity.toString(),
+      });
+
+      const response = await fetch(provider.apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      const text = await response.text();
+      let json: SmmApiResponse = {};
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { error: `Invalid JSON response: ${text.slice(0, 100)}` };
+      }
+
+      if (json.order !== undefined && json.order !== null) {
+        console.log(
+          `[SMM Dispatcher Active-Link Failover] SUCCESS with normalized link on service #${svcId}! Order #${json.order}!`
+        );
+
+        const matched = services.find((s) => String(s.service).replace(/[^0-9]/g, '').trim() === svcId);
+        const rate = matched ? parseFloat(String(matched.rate)) || 0 : 0;
+        const cost = (item.quantity / 1000) * rate;
+
+        return {
+          success: true,
+          orderId: json.order,
+          cost,
+          serviceId: svcId,
+          rawResponse: json,
+          usedLink: normalizedLink,
+        };
+      }
+    } catch (err) {
+      console.error(`[SMM Dispatcher Active-Link Failover] Error with normalized link on service #${svcId}:`, err);
+    }
+  }
+
+  return {
+    success: false,
+    serviceId: cleanBlockedId,
+    error: 'All alternate services and unique link normalization reported active link lock on provider',
+  };
 }
 
 /**
@@ -295,10 +503,26 @@ export async function autoHealAndRetryService(
         rawResponse: json,
       };
     } else {
+      const errorMsg = String(json.error || 'Retry rejected by provider');
+      if (/active order with this link|wait until order being completed/i.test(errorMsg)) {
+        console.warn(`[SMM Dispatcher Auto-Heal] Active link lock encountered during auto-heal for ${item.metricType}. Triggering failover...`);
+        const failover = await handleActiveLinkFailoverAndRetry(provider, item, targetLink, cleanNewServiceId);
+        if (failover.success && failover.orderId) {
+          return {
+            success: true,
+            healedMapping: failover.serviceId
+              ? { serviceId: failover.serviceId, costPer1000: failover.cost ? (failover.cost * 1000) / item.quantity : newRate, minQuantity: newMin }
+              : healedMapping,
+            orderId: failover.orderId,
+            cost: failover.cost || estimatedCost,
+            rawResponse: failover.rawResponse,
+          };
+        }
+      }
       return {
         success: false,
         healedMapping,
-        error: String(json.error || 'Retry rejected by provider'),
+        error: errorMsg,
         rawResponse: json,
       };
     }
@@ -487,9 +711,10 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
         totalSuccessfulCost += estimatedCost;
         successCount++;
       } else {
-        // Check if error is due to incorrect/invalid service ID
+        // Check if error is due to incorrect/invalid service ID or active link lock
         const errorMsg = json.error || 'Provider rejected order dispatch';
         const isInvalidService = /incorrect service id|invalid service/i.test(String(errorMsg));
+        const isActiveLinkLock = /active order with this link|wait until order being completed/i.test(String(errorMsg));
 
         if (isInvalidService) {
           console.warn(`[SMM Dispatcher] Detected invalid service ID "${cleanServiceId}" for ${item.metricType}. Triggering auto-heal...`);
@@ -529,6 +754,34 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
             });
             failureCount++;
           }
+        } else if (isActiveLinkLock) {
+          console.warn(`[SMM Dispatcher] Active link lock detected for ${item.metricType}. Triggering failover...`);
+          const failover = await handleActiveLinkFailoverAndRetry(provider, item, targetLink, cleanServiceId);
+          if (failover.success && failover.orderId) {
+            dispatchResults.push({
+              metricType: item.metricType,
+              serviceId: failover.serviceId || cleanServiceId,
+              quantity: item.quantity,
+              cost: failover.cost || estimatedCost,
+              status: 'SUCCESS',
+              providerOrderId: failover.orderId,
+              rawResponse: failover.rawResponse,
+            });
+            totalSuccessfulCost += failover.cost || estimatedCost;
+            successCount++;
+            continue;
+          } else {
+            dispatchResults.push({
+              metricType: item.metricType,
+              serviceId: cleanServiceId,
+              quantity: item.quantity,
+              cost: 0,
+              status: 'FAILED',
+              error: String(failover.error || errorMsg),
+              rawResponse: failover.rawResponse || json,
+            });
+            failureCount++;
+          }
         } else {
           // Provider returned another error (e.g. Insufficient balance)
           dispatchResults.push({
@@ -546,6 +799,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       const isInvalidService = /incorrect service id|invalid service/i.test(errorMsg);
+      const isActiveLinkLock = /active order with this link|wait until order being completed/i.test(errorMsg);
 
       if (isInvalidService) {
         console.warn(`[SMM Dispatcher] Detected invalid service error in exception for ${item.metricType}. Auto-healing...`);
@@ -561,6 +815,23 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
             rawResponse: healed.rawResponse,
           });
           totalSuccessfulCost += healed.cost || estimatedCost;
+          successCount++;
+          continue;
+        }
+      } else if (isActiveLinkLock) {
+        console.warn(`[SMM Dispatcher] Detected active link lock error in exception for ${item.metricType}. Failover...`);
+        const failover = await handleActiveLinkFailoverAndRetry(provider, item, targetLink, cleanServiceId);
+        if (failover.success && failover.orderId) {
+          dispatchResults.push({
+            metricType: item.metricType,
+            serviceId: failover.serviceId || cleanServiceId,
+            quantity: item.quantity,
+            cost: failover.cost || estimatedCost,
+            status: 'SUCCESS',
+            providerOrderId: failover.orderId,
+            rawResponse: failover.rawResponse,
+          });
+          totalSuccessfulCost += failover.cost || estimatedCost;
           successCount++;
           continue;
         }

@@ -244,7 +244,7 @@ export default function OrderTracker() {
     if (s === 'SKIPPED') {
       return (
         <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-800 text-slate-400 border border-slate-700">
-          Skipped
+          SKIPPED (Below Min Qty)
         </span>
       );
     }

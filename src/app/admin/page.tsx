@@ -455,7 +455,7 @@ export default function AdminOrdersPage() {
     if (s.includes('skip')) {
       return (
         <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-800 text-slate-400 border border-slate-700">
-          Skipped
+          SKIPPED (Below Min Qty)
         </span>
       );
     }
@@ -928,7 +928,7 @@ export default function AdminOrdersPage() {
                                     </span>
                                   </div>
 
-                                  {order.errorMessage && (
+                                  {order.errorMessage && subItems.some((i) => String(i.status).toLowerCase().includes('fail')) && (
                                     <div className="p-2.5 sm:p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2 min-w-0">
                                       <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
                                       <span className="font-mono text-[11px] leading-relaxed break-words min-w-0 flex-1">
