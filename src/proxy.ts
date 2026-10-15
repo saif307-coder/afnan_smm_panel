@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { ADMIN_COOKIE_NAME, isValidAdminToken } from '@/lib/auth';
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
   const isAuthenticated = isValidAdminToken(token);
