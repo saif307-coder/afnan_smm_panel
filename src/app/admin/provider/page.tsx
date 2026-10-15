@@ -531,10 +531,15 @@ export default function AdminProviderPage() {
         setServicesFetched(true);
       }
 
-      const igServices = catalog.filter((s) => {
-        const text = `${s.name || ''} ${s.category || ''}`.toLowerCase();
-        return text.includes('instagram') || text.includes('reel') || text.includes('post');
-      });
+      const isInstagramService = (s: ProviderService) => {
+        const text = `${s.category || ''} ${s.name || ''}`;
+        if (!/instagram|\big\b/i.test(text)) return false;
+        const nonIgBlacklist = /telegram|tiktok|youtube|facebook|twitter|x\.com|kick|threads|twitch|spotify|discord|linkedin|snapchat|pinterest/i;
+        if (nonIgBlacklist.test(text)) return false;
+        return true;
+      };
+
+      const igServices = catalog.filter(isInstagramService);
 
       const findBest = (nameKeywords: string[], exclude: string[] = []) => {
         return igServices
@@ -556,10 +561,33 @@ export default function AdminProviderPage() {
           });
       };
 
-      const viewsCandidates = findBest(['views', 'view'], ['story', 'live', 'igtv', 'like', 'save', 'comment', 'auto']);
+      const viewsCandidates = igServices
+        .filter((s) => {
+          const name = (s.name || '').toLowerCase();
+          const category = (s.category || '').toLowerCase();
+          const text = `${category} ${name}`;
+          const hasViews = /views|view|reel/i.test(name) || (/views|view|reel/i.test(category) && /video|reel|all/i.test(name));
+          if (!hasViews) return false;
+          const isStoryOrLive = /story|live stream|igtv/i.test(name) && !/reel|video|post/i.test(name);
+          if (isStoryOrLive) return false;
+          const isOtherMetric = /like|save|comment|auto\b/i.test(name);
+          if (isOtherMetric) return false;
+          return true;
+        })
+        .sort((a, b) => {
+          const rateA = parseFloat(String(a.rate)) || 0;
+          const rateB = parseFloat(String(b.rate)) || 0;
+          const minA = parseInt(String(a.min || 0), 10) || 0;
+          const minB = parseInt(String(b.min || 0), 10) || 0;
+          const lowA = minA <= 100 ? 0 : 1;
+          const lowB = minB <= 100 ? 0 : 1;
+          if (lowA !== lowB) return lowA - lowB;
+          return rateA - rateB;
+        });
+
       const likesCandidates = findBest(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save']);
       const commentsCandidates = findBest(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian']);
-      const savesCandidates = findBest(['saves', 'save'], ['story', 'auto']);
+      const savesCandidates = findBest(['saves', 'save'], ['story', 'auto', 'view', 'like']);
       const sharesCandidates = findBest(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
       const repostsCandidates = findBest(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter']);
       const followersCandidates = findBest(['followers', 'follower'], ['story', 'auto']);

@@ -11,6 +11,8 @@ import {
   validationError,
 } from '@/lib/validators';
 
+import { isInstagramService, fetchLiveProviderServices } from '@/lib/smmDispatcher';
+
 export async function OPTIONS() {
   return handleOptions();
 }
@@ -119,6 +121,25 @@ export async function POST(req: NextRequest) {
         { success: false, error: `Provider with id "${providerId}" not found` },
         { status: 404 }
       );
+    }
+
+    // Verify service belongs strictly to Instagram if catalog is accessible
+    try {
+      const liveServices = await fetchLiveProviderServices(provider.apiUrl, provider.apiKey, provider.id, false);
+      if (liveServices && liveServices.length > 0) {
+        const targetSvc = liveServices.find((s) => String(s.service).replace(/[^0-9]/g, '').trim() === serviceId);
+        if (targetSvc && !isInstagramService(targetSvc)) {
+          return jsonResponse(
+            {
+              success: false,
+              error: `Service #${serviceId} ("${targetSvc.name}") belongs to "${targetSvc.category}", which is not an Instagram service. Only Instagram services can be mapped.`,
+            },
+            { status: 400 }
+          );
+        }
+      }
+    } catch {
+      // Non-blocking if provider API is temporarily unreachable during mapping save
     }
 
     // Upsert: create or update based on unique (providerId, metricType)

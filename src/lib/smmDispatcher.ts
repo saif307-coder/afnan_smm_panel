@@ -133,7 +133,23 @@ export function normalizeLinkWithTrackingParam(link: string): string {
 }
 
 /**
- * Dynamically resolves candidate active, working services for a metric, optionally excluding specific service IDs.
+ * Strict Instagram platform guard:
+ * 1. Combined text `${service.category} ${service.name}` MUST match /instagram|\big\b/i
+ * 2. Combined text MUST NOT match /telegram|tiktok|youtube|facebook|twitter|x\.com|kick|threads|twitch|spotify|discord|linkedin|snapchat|pinterest/i
+ */
+export function isInstagramService(service: { name?: string; category?: string }): boolean {
+  const text = `${service.category || ''} ${service.name || ''}`;
+  if (!/instagram|\big\b/i.test(text)) return false;
+
+  const nonIgBlacklist = /telegram|tiktok|youtube|facebook|twitter|x\.com|kick|threads|twitch|spotify|discord|linkedin|snapchat|pinterest/i;
+  if (nonIgBlacklist.test(text)) return false;
+
+  return true;
+}
+
+/**
+ * Dynamically resolves candidate active, working Instagram services for a metric,
+ * optionally excluding specific service IDs.
  */
 export function matchCandidateActiveServices(
   services: ProviderServiceItem[],
@@ -143,20 +159,21 @@ export function matchCandidateActiveServices(
   const normMetric = metricType.toUpperCase();
   const excludeSet = new Set(excludeIds.map((id) => String(id).replace(/[^0-9]/g, '').trim()));
 
+  // 1. Strict Instagram Platform Guard
   const igServices = services.filter((s) => {
     const cleanId = String(s.service).replace(/[^0-9]/g, '').trim();
     if (excludeSet.has(cleanId)) return false;
-    const text = `${s.name || ''} ${s.category || ''}`.toLowerCase();
-    return text.includes('instagram') || text.includes('reel') || text.includes('post');
+    return isInstagramService(s);
   });
 
-  const filterByKeywords = (nameKeywords: string[], exclude: string[] = [], preferLowMin = true) => {
+  const filterByNameKeywords = (nameKeywords: string[], exclude: string[] = [], preferLowMin = true) => {
     return igServices
       .filter((s) => {
         const name = (s.name || '').toLowerCase();
         const matches = nameKeywords.some((k) => name.includes(k.toLowerCase()));
+        if (!matches) return false;
         const isExcluded = exclude.some((e) => name.includes(e.toLowerCase()));
-        return matches && !isExcluded;
+        return !isExcluded;
       })
       .sort((a, b) => {
         const rateA = parseFloat(String(a.rate)) || 0;
@@ -173,30 +190,59 @@ export function matchCandidateActiveServices(
   };
 
   switch (normMetric) {
-    case 'VIEWS':
-      return filterByKeywords(['views', 'view'], ['story', 'live', 'igtv', 'like', 'save', 'comment', 'auto']);
+    case 'VIEWS': {
+      return igServices
+        .filter((s) => {
+          const name = (s.name || '').toLowerCase();
+          const category = (s.category || '').toLowerCase();
+          const text = `${category} ${name}`;
+
+          // Specifically require /instagram/i AND /view|reel/i
+          const hasViews = /views|view|reel/i.test(name) || (/views|view|reel/i.test(category) && /video|reel|all/i.test(name));
+          if (!hasViews) return false;
+
+          // Exclude story / live stream / igtv unless explicitly reel / video / post views
+          const isStoryOrLive = /story|live stream|igtv/i.test(name) && !/reel|video|post/i.test(name);
+          if (isStoryOrLive) return false;
+
+          const isOtherMetric = /like|save|comment|auto\b/i.test(name);
+          if (isOtherMetric) return false;
+
+          return true;
+        })
+        .sort((a, b) => {
+          const rateA = parseFloat(String(a.rate)) || 0;
+          const rateB = parseFloat(String(b.rate)) || 0;
+          const minA = parseInt(String(a.min || 0), 10) || 0;
+          const minB = parseInt(String(b.min || 0), 10) || 0;
+          const lowA = minA <= 100 ? 0 : 1;
+          const lowB = minB <= 100 ? 0 : 1;
+          if (lowA !== lowB) return lowA - lowB;
+          return rateA - rateB;
+        });
+    }
     case 'LIKES':
-      return filterByKeywords(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save']);
+      return filterByNameKeywords(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save']);
     case 'COMMENTS':
-      return filterByKeywords(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian']);
+      return filterByNameKeywords(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian']);
     case 'SAVES':
-      return filterByKeywords(['saves', 'save'], ['story', 'auto']);
+      return filterByNameKeywords(['saves', 'save'], ['story', 'auto', 'view', 'like']);
     case 'SHARES':
-      return filterByKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
+      return filterByNameKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
     case 'REPOSTS': {
-      const reposts = filterByKeywords(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter']);
-      return reposts.length > 0 ? reposts : filterByKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
+      const reposts = filterByNameKeywords(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter']);
+      return reposts.length > 0 ? reposts : filterByNameKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
     }
     case 'FOLLOWERS':
     case 'FOLLOWS':
-      return filterByKeywords(['followers', 'follower'], ['story', 'auto']);
+      return filterByNameKeywords(['followers', 'follower'], ['story', 'auto']);
     default:
       return [];
   }
 }
 
 /**
- * Dynamically resolves the best active, cheapest service for a metric.
+ * Dynamically resolves the best active, cheapest Instagram service for a metric.
  */
 export function matchBestActiveService(
   services: ProviderServiceItem[],
@@ -332,10 +378,17 @@ export async function handleActiveLinkFailoverAndRetry(
   const normalizedLink = normalizeLinkWithTrackingParam(targetLink);
   console.log(`[SMM Dispatcher Active-Link Failover] Strategy 2: Retrying with normalized unique link "${normalizedLink}"...`);
 
-  const servicesToTry = [
-    cleanBlockedId,
-    ...alternateCandidates.map((c) => String(c.service).replace(/[^0-9]/g, '').trim()),
-  ];
+  const servicesToTry: string[] = [];
+  const blockedObj = services.find((s) => String(s.service).replace(/[^0-9]/g, '').trim() === cleanBlockedId);
+  if (blockedObj && isInstagramService(blockedObj)) {
+    servicesToTry.push(cleanBlockedId);
+  }
+  for (const alt of alternateCandidates) {
+    const id = String(alt.service).replace(/[^0-9]/g, '').trim();
+    if (id && !servicesToTry.includes(id) && isInstagramService(alt)) {
+      servicesToTry.push(id);
+    }
+  }
 
   for (const svcId of servicesToTry) {
     if (!svcId) continue;
@@ -417,8 +470,8 @@ export async function autoHealAndRetryService(
   }
 
   const matched = matchBestActiveService(services, item.metricType);
-  if (!matched) {
-    return { success: false, error: `No active replacement service found for metric "${item.metricType}"` };
+  if (!matched || !isInstagramService(matched)) {
+    return { success: false, error: `No active replacement Instagram service found for metric "${item.metricType}"` };
   }
 
   const cleanNewServiceId = String(matched.service).replace(/[^0-9]/g, '').trim();
