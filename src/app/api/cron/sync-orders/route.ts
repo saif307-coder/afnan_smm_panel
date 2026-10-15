@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { handleOptions, jsonResponse } from '@/lib/cors';
+import { aggregateParentOrderStatus } from '@/utils/orderDeliveryProgress';
 
 export async function OPTIONS() {
   return handleOptions();
@@ -211,36 +212,8 @@ async function executeOrderSync() {
       continue;
     }
 
-    const nonSkippedItems = parentOrder.items.filter((i) => i.status !== 'Skipped' && i.quantity > 0);
-    if (nonSkippedItems.length === 0) {
-      continue;
-    }
-
-    const isAllCompleted = nonSkippedItems.every(
-      (i) => i.status === 'Completed' || i.status === 'COMPLETED'
-    );
-    const hasAnyInProgress = nonSkippedItems.some(
-      (i) =>
-        i.status === 'In progress' ||
-        i.status === 'Processing' ||
-        (i.remains !== null && i.remains < i.quantity && i.remains > 0)
-    );
-    const isAllCanceledOrFailed = nonSkippedItems.every(
-      (i) => i.status === 'Canceled' || i.status === 'Failed'
-    );
-    const hasPartial = nonSkippedItems.some((i) => i.status === 'Partial');
-
-    let evaluatedStatus = parentOrder.status;
-
-    if (isAllCompleted) {
-      evaluatedStatus = 'COMPLETED';
-    } else if (hasAnyInProgress) {
-      evaluatedStatus = 'PROCESSING';
-    } else if (hasPartial) {
-      evaluatedStatus = 'PARTIAL';
-    } else if (isAllCanceledOrFailed) {
-      evaluatedStatus = 'FAILED';
-    }
+    const evaluatedStatus = aggregateParentOrderStatus(parentOrder.items);
+    const computedTotalCost = parentOrder.items.reduce((acc, i) => acc + (i.cost || 0), 0);
 
     // Also update providerResponsesJson on parent order for backwards compatibility
     const updatedResponsesJson = JSON.stringify(
@@ -257,12 +230,14 @@ async function executeOrderSync() {
       }))
     );
 
-    if (evaluatedStatus !== parentOrder.status || updatedResponsesJson !== parentOrder.providerResponsesJson) {
+    const shouldUpdateCost = parentOrder.totalCost === 0 && computedTotalCost > 0;
+    if (evaluatedStatus !== parentOrder.status || updatedResponsesJson !== parentOrder.providerResponsesJson || shouldUpdateCost) {
       await prisma.order.update({
         where: { id: orderId },
         data: {
           status: evaluatedStatus,
           providerResponsesJson: updatedResponsesJson,
+          ...(shouldUpdateCost ? { totalCost: computedTotalCost } : {}),
         },
       });
       ordersUpdatedCount++;

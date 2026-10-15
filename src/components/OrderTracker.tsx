@@ -25,6 +25,7 @@ import {
   TrendingUp,
   AlertCircle,
 } from 'lucide-react';
+import { calculateSubOrderDelivery } from '@/utils/orderDeliveryProgress';
 
 export interface SubOrderItem {
   id: string;
@@ -168,7 +169,8 @@ export default function OrderTracker() {
   }, [orders, statusFilter, searchQuery]);
 
   const getOrderStatusBadge = (status: string) => {
-    switch (status.toUpperCase()) {
+    const s = String(status || '').toUpperCase().trim();
+    switch (s) {
       case 'COMPLETED':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
@@ -177,6 +179,7 @@ export default function OrderTracker() {
           </span>
         );
       case 'PROCESSING':
+      case 'IN_PROGRESS':
       case 'IN PROGRESS':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 font-mono">
@@ -186,21 +189,21 @@ export default function OrderTracker() {
         );
       case 'PARTIAL':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono">
             PARTIAL
           </span>
         );
       case 'CANCELED':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 font-mono">
             CANCELED
           </span>
         );
       case 'PENDING':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 font-mono">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/25 font-mono">
             <Clock className="w-3.5 h-3.5" />
-            QUEUED
+            PENDING
           </span>
         );
       case 'FAILED':
@@ -212,6 +215,59 @@ export default function OrderTracker() {
           </span>
         );
     }
+  };
+
+  const getSubOrderItemBadge = (status: string) => {
+    const s = String(status || '').toUpperCase().trim();
+    if (s === 'COMPLETED') {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+          Completed
+        </span>
+      );
+    }
+    if (s === 'PROCESSING' || s === 'IN_PROGRESS' || s === 'IN PROGRESS') {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+          Processing
+        </span>
+      );
+    }
+    if (s === 'PARTIAL') {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/15 text-amber-400 border border-amber-500/30">
+          Partial
+        </span>
+      );
+    }
+    if (s === 'SKIPPED') {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-800 text-slate-400 border border-slate-700">
+          Skipped
+        </span>
+      );
+    }
+    if (s === 'FAILED') {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-500/15 text-rose-400 border border-rose-500/30">
+          Failed
+        </span>
+      );
+    }
+    if (s === 'CANCELED') {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-500/15 text-rose-400 border border-rose-500/30">
+          Canceled
+        </span>
+      );
+    }
+    // Default PENDING: amber/slate (never green)
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/10 text-amber-300/90 border border-amber-500/25">
+        Pending
+      </span>
+    );
   };
 
   const getMetricIcon = (metricType: string) => {
@@ -376,20 +432,21 @@ export default function OrderTracker() {
             const subItems = getSubOrders(order);
             const isExpanded = !!expandedOrders[order.id];
 
+            const subItemDeliveries = subItems.map((item) => ({
+              item,
+              metrics: calculateSubOrderDelivery(item),
+            }));
+
             const totalQuantity = subItems.reduce((acc, i) => acc + (i.quantity || 0), 0);
-            const totalRemains = subItems.reduce((acc, i) => {
-              if (order.status === 'COMPLETED' || i.status === 'Completed') return acc;
-              return acc + (i.remains !== null && i.remains !== undefined ? i.remains : i.quantity || 0);
-            }, 0);
+            const totalDelivered = subItemDeliveries.reduce((acc, d) => acc + d.metrics.delivered, 0);
+            const totalRemains = subItemDeliveries.reduce((acc, d) => acc + d.metrics.effectiveRemains, 0);
 
             const rawOverall =
-              totalQuantity > 0 ? Math.round(((totalQuantity - totalRemains) / totalQuantity) * 100) : 0;
+              totalQuantity > 0 ? Math.round((totalDelivered / totalQuantity) * 100) : 0;
             const overallProgress =
               order.status === 'COMPLETED'
                 ? 100
-                : Number.isFinite(rawOverall)
-                ? Math.min(100, Math.max(0, rawOverall))
-                : 0;
+                : Math.min(99, Math.max(0, rawOverall));
 
             const dateStr = new Date(order.createdAt).toLocaleDateString(undefined, {
               month: 'short',
@@ -498,25 +555,9 @@ export default function OrderTracker() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {subItems.map((item, idx) => {
+                      {subItemDeliveries.map(({ item, metrics }, idx) => {
                         const quantity = item.quantity || 0;
-                        const remains =
-                          order.status === 'COMPLETED' || item.status === 'Completed'
-                            ? 0
-                            : item.remains !== null && item.remains !== undefined
-                            ? item.remains
-                            : quantity;
-
-                        const rawItemProgress =
-                          quantity > 0 ? Math.round(((quantity - remains) / quantity) * 100) : 0;
-                        const itemProgress =
-                          order.status === 'COMPLETED' || item.status === 'Completed'
-                            ? 100
-                            : Number.isFinite(rawItemProgress)
-                            ? Math.min(100, Math.max(0, rawItemProgress))
-                            : 0;
-
-                        const delivered = Math.max(0, quantity - remains);
+                        const { effectiveRemains, delivered, progress: itemProgress } = metrics;
 
                         return (
                           <div
@@ -535,19 +576,7 @@ export default function OrderTracker() {
                               </div>
 
                               <div className="flex items-center gap-2">
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
-                                    item.status === 'Completed' || itemProgress === 100
-                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                      : item.status === 'In progress' || item.status === 'Processing'
-                                      ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
-                                      : item.status === 'Canceled'
-                                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                                      : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
-                                  }`}
-                                >
-                                  {item.status || 'Pending'}
-                                </span>
+                                {getSubOrderItemBadge(item.status)}
 
                                 {item.providerOrderId && (
                                   <span className="text-[10px] font-mono text-slate-500">
@@ -582,7 +611,7 @@ export default function OrderTracker() {
                                 Start Count: {item.startCount !== null && item.startCount !== undefined ? item.startCount.toLocaleString() : '—'}
                               </span>
                               <span className="text-amber-400/90 font-medium">
-                                Remains: {remains.toLocaleString()}
+                                Remains: {effectiveRemains.toLocaleString()} / {quantity.toLocaleString()}
                               </span>
                             </div>
                           </div>

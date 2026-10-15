@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { handleOptions, jsonResponse } from '@/lib/cors';
+import { aggregateParentOrderStatus } from '@/utils/orderDeliveryProgress';
 
 
 export async function OPTIONS() {
@@ -162,13 +163,13 @@ async function executeCronSync() {
       }
     }
 
-    // Determine if overall order status changed
-    let newOrderStatus = order.status;
-    if (itemsTotalCount > 0 && itemsCompletedCount === itemsTotalCount) {
-      newOrderStatus = 'COMPLETED';
-    } else if (itemsCompletedCount > 0) {
-      newOrderStatus = 'PROCESSING';
-    }
+    // Determine if overall order status changed using unified deterministic rules
+    const newOrderStatus = aggregateParentOrderStatus(
+      items.map((i) => ({
+        status: i.externalStatus || i.status,
+        providerOrderId: i.providerOrderId ? String(i.providerOrderId) : null,
+      }))
+    );
 
     if (itemsModified || newOrderStatus !== order.status) {
       await prisma.order.update({

@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
       {
         success: true,
         message:
-          dispatchSummary?.overallStatus === 'COMPLETED'
+          dispatchSummary?.overallStatus === 'PROCESSING' || dispatchSummary?.overallStatus === 'COMPLETED'
             ? 'Order dispatched successfully to SMM provider'
             : dispatchSummary?.overallStatus === 'PARTIAL'
             ? 'Order partially dispatched (some services failed)'

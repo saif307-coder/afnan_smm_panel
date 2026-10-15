@@ -8,6 +8,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { ensureOfficialProvider } from '../../prisma/seedProvider';
+import { aggregateParentOrderStatus } from '@/utils/orderDeliveryProgress';
 
 export const DEFAULT_DISPATCHER_MAPPINGS: Record<string, { serviceId: string; costPer1000: number; minQuantity: number }> = {
   VIEWS: { serviceId: '12897', costPer1000: 0.0004, minQuantity: 10 },
@@ -32,7 +33,7 @@ export interface DispatchItemResult {
 
 export interface DispatchSummary {
   orderId: string;
-  overallStatus: 'COMPLETED' | 'PARTIAL' | 'FAILED';
+  overallStatus: 'COMPLETED' | 'PROCESSING' | 'PARTIAL' | 'FAILED' | 'CANCELED' | 'PENDING';
   totalCost: number;
   successfulItems: number;
   failedItems: number;
@@ -251,7 +252,7 @@ export async function autoHealAndRetryService(
     return {
       success: false,
       healedMapping,
-      error: 'Skipped (Below Min)',
+      error: `Skipped: Qty (${item.quantity}) below provider min (${newMin})`,
     };
   }
 
@@ -435,7 +436,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
         quantity: item.quantity,
         cost: 0,
         status: 'SKIPPED',
-        error: 'Skipped (Below Min)',
+        error: `Skipped: Qty (${item.quantity}) below provider min (${mapping.minQuantity})`,
       });
       continue;
     }
@@ -577,17 +578,13 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     }
   }
 
-  // 5. Determine Overall Status
-  let overallStatus: 'COMPLETED' | 'PARTIAL' | 'FAILED' = 'FAILED';
-  if (successCount > 0 && failureCount === 0) {
-    overallStatus = 'COMPLETED';
-  } else if (successCount > 0 && failureCount > 0) {
-    overallStatus = 'PARTIAL';
-  } else if (successCount === 0 && failureCount === 0 && dispatchResults.length > 0) {
-    overallStatus = 'COMPLETED';
-  } else {
-    overallStatus = 'FAILED';
-  }
+  // 5. Determine Overall Status using unified deterministic aggregation
+  const overallStatus = aggregateParentOrderStatus(
+    dispatchResults.map((d) => ({
+      status: d.status === 'SUCCESS' && d.providerOrderId ? 'PROCESSING' : d.status === 'SKIPPED' ? 'SKIPPED' : 'FAILED',
+      providerOrderId: d.providerOrderId !== undefined && d.providerOrderId !== null ? String(d.providerOrderId) : null,
+    }))
+  );
 
   // Gather concise error summaries if any
   const errors = dispatchResults
@@ -618,8 +615,8 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
       // Insert OrderItem records in a single batch query
       const orderItemsData = dispatchResults.map((d) => {
         let initialStatus = 'Pending';
-        if (d.status === 'SUCCESS') {
-          initialStatus = 'Pending';
+        if (d.status === 'SUCCESS' && d.providerOrderId) {
+          initialStatus = 'Processing';
         } else if (d.status === 'SKIPPED') {
           initialStatus = 'Skipped';
         } else {

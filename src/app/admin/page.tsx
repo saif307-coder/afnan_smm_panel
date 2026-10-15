@@ -32,6 +32,7 @@ import {
   Save,
   Link2,
 } from 'lucide-react';
+import { calculateSubOrderDelivery } from '@/utils/orderDeliveryProgress';
 
 interface SubOrderItem {
   id: string;
@@ -466,7 +467,7 @@ export default function AdminOrdersPage() {
       );
     }
     return (
-      <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-blue-500/15 text-blue-400 border border-blue-500/30">
+      <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/10 text-amber-300/90 border border-amber-500/25">
         Pending
       </span>
     );
@@ -858,57 +859,57 @@ export default function AdminOrdersPage() {
                                     </span>
                                   </div>
 
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-4 text-xs font-mono">
-                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
-                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
-                                        <Heart className="w-3 h-3 text-rose-400 shrink-0" /> <span className="truncate">Likes</span>
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs font-mono">
+                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
+                                        <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0" /> <span>Likes</span>
                                       </span>
-                                      <span className="text-rose-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                      <span className="text-rose-300 font-bold text-sm block mt-1">
                                         {order.likes.toLocaleString()}
                                       </span>
                                     </div>
 
-                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
-                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
-                                        <Bookmark className="w-3 h-3 text-amber-400 shrink-0" /> <span className="truncate">Saves</span>
+                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
+                                        <Bookmark className="w-3.5 h-3.5 text-amber-400 shrink-0" /> <span>Saves</span>
                                       </span>
-                                      <span className="text-amber-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                      <span className="text-amber-300 font-bold text-sm block mt-1">
                                         {order.saves.toLocaleString()}
                                       </span>
                                     </div>
 
-                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
-                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
-                                        <Share2 className="w-3 h-3 text-sky-400 shrink-0" /> <span className="truncate">Shares</span>
+                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
+                                        <Share2 className="w-3.5 h-3.5 text-sky-400 shrink-0" /> <span>Shares</span>
                                       </span>
-                                      <span className="text-sky-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                      <span className="text-sky-300 font-bold text-sm block mt-1">
                                         {order.shares.toLocaleString()}
                                       </span>
                                     </div>
 
-                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
-                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
-                                        <Repeat2 className="w-3 h-3 text-emerald-400 shrink-0" /> <span className="truncate">Reposts</span>
+                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
+                                        <Repeat2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> <span>Reposts</span>
                                       </span>
-                                      <span className="text-emerald-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                      <span className="text-emerald-300 font-bold text-sm block mt-1">
                                         {order.reposts.toLocaleString()}
                                       </span>
                                     </div>
 
-                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
-                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
-                                        <MessageCircle className="w-3 h-3 text-purple-400 shrink-0" /> <span className="truncate">Comments</span>
+                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
+                                        <MessageCircle className="w-3.5 h-3.5 text-purple-400 shrink-0" /> <span>Comments</span>
                                       </span>
-                                      <span className="text-purple-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                      <span className="text-purple-300 font-bold text-sm block mt-1">
                                         {order.comments.toLocaleString()}
                                       </span>
                                     </div>
 
-                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
-                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
-                                        <UserPlus className="w-3 h-3 text-fuchsia-400 shrink-0" /> <span className="truncate">Follows</span>
+                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
+                                        <UserPlus className="w-3.5 h-3.5 text-fuchsia-400 shrink-0" /> <span>Follows</span>
                                       </span>
-                                      <span className="text-fuchsia-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                      <span className="text-fuchsia-300 font-bold text-sm block mt-1">
                                         {order.followers.toLocaleString()}
                                       </span>
                                     </div>
@@ -940,11 +941,7 @@ export default function AdminOrdersPage() {
                                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                                       {subItems.map((item, idx) => {
                                         const quantity = item.quantity || 0;
-                                        const remains = item.remains !== undefined && item.remains !== null ? item.remains : quantity;
-                                        const progressPct =
-                                          quantity > 0
-                                            ? Math.min(100, Math.max(0, Math.round(((quantity - remains) / quantity) * 100)))
-                                            : 100;
+                                        const { effectiveRemains, delivered, progress: progressPct } = calculateSubOrderDelivery(item);
 
                                         return (
                                           <div
@@ -994,9 +991,7 @@ export default function AdminOrdersPage() {
                                               <div className="min-w-0">
                                                 <span className="text-slate-500">Remains: </span>
                                                 <span className="font-bold text-amber-300">
-                                                  {item.remains !== null && item.remains !== undefined
-                                                    ? `${item.remains.toLocaleString()} / ${quantity.toLocaleString()}`
-                                                    : '—'}
+                                                  {`${effectiveRemains.toLocaleString()} / ${quantity.toLocaleString()}`}
                                                 </span>
                                               </div>
 
