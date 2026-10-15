@@ -390,11 +390,13 @@ export default function ClientDashboardPage() {
                 return acc + (i.remains !== null && i.remains !== undefined ? i.remains : i.quantity || 0);
               }, 0);
 
+              const rawOverall =
+                totalQuantity > 0 ? Math.round(((totalQuantity - totalRemains) / totalQuantity) * 100) : 0;
               const overallProgress =
                 order.status === 'COMPLETED'
                   ? 100
-                  : totalQuantity > 0
-                  ? Math.min(100, Math.max(0, Math.round(((totalQuantity - totalRemains) / totalQuantity) * 100)))
+                  : Number.isFinite(rawOverall)
+                  ? Math.min(100, Math.max(0, rawOverall))
                   : 0;
 
               const dateStr = new Date(order.createdAt).toLocaleDateString(undefined, {
@@ -514,11 +516,13 @@ export default function ClientDashboardPage() {
                               : quantity;
 
                           // User requested formula: ((Quantity - Remains) / Quantity) * 100
+                          const rawItemProgress =
+                            quantity > 0 ? Math.round(((quantity - remains) / quantity) * 100) : 0;
                           const itemProgress =
                             order.status === 'COMPLETED' || item.status === 'Completed'
                               ? 100
-                              : quantity > 0
-                              ? Math.min(100, Math.max(0, Math.round(((quantity - remains) / quantity) * 100)))
+                              : Number.isFinite(rawItemProgress)
+                              ? Math.min(100, Math.max(0, rawItemProgress))
                               : 0;
 
                           const delivered = Math.max(0, quantity - remains);

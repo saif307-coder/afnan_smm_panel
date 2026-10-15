@@ -25,6 +25,12 @@ import {
   Activity,
   Loader2,
   Zap,
+  Pencil,
+  Ban,
+  Trash2,
+  X,
+  Save,
+  Link2,
 } from 'lucide-react';
 
 interface SubOrderItem {
@@ -74,6 +80,15 @@ export default function AdminOrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  // Edit Modal State
+  const [editingOrder, setEditingOrder] = useState<{
+    id: string;
+    targetUrl: string;
+  } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const [toast, setToast] = useState<{
     show: boolean;
     type: 'success' | 'error';
@@ -174,6 +189,142 @@ export default function AdminOrdersPage() {
     }
   };
 
+  // ─── ADMIN CRUD ACTIONS ───────────────────────────────────────────────────
+
+  // 1. Edit Target URL Handler
+  const handleOpenEdit = (order: OrderItem) => {
+    setEditingOrder({
+      id: order.id,
+      targetUrl: order.targetReelUrl || '',
+    });
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrder) return;
+
+    setSavingEdit(true);
+    const orderId = editingOrder.id;
+    const newUrl = editingOrder.targetUrl.trim();
+
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUrl: newUrl }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update target URL');
+      }
+
+      // Optimistically update order in local state
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, targetReelUrl: newUrl || null } : o))
+      );
+
+      setToast({
+        show: true,
+        type: 'success',
+        message: `Target URL successfully updated for Order #${orderId.slice(-8)}.`,
+      });
+      setEditingOrder(null);
+    } catch (err) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Edit failed',
+      });
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // 2. Stop Order (Change status to CANCELED)
+  const handleStopOrder = async (orderId: string) => {
+    setActionLoadingId(orderId);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'CANCELED' }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to stop order');
+      }
+
+      // Optimistically update status to CANCELED
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id === orderId) {
+            return {
+              ...o,
+              status: 'CANCELED',
+              items: o.items?.map((item) =>
+                item.status === 'Completed' ? item : { ...item, status: 'Canceled' }
+              ),
+            };
+          }
+          return o;
+        })
+      );
+
+      setToast({
+        show: true,
+        type: 'success',
+        message: `Order #${orderId.slice(-8)} was stopped and marked as CANCELED.`,
+      });
+    } catch (err) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Stop order failed',
+      });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  // 3. Delete Order Handler
+  const handleDeleteOrder = async (order: OrderItem) => {
+    const confirmMessage = `Are you sure you want to permanently delete Order #${order.id.slice(-8)}?\n\nThis will completely delete the parent order and all child sub-orders. This action cannot be undone.`;
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setActionLoadingId(order.id);
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}`, {
+        method: 'DELETE',
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete order');
+      }
+
+      // Optimistically remove from state
+      setOrders((prev) => prev.filter((o) => o.id !== order.id));
+
+      setToast({
+        show: true,
+        type: 'success',
+        message: `Order #${order.id.slice(-8)} was permanently deleted.`,
+      });
+    } catch (err) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Delete order failed',
+      });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
     fetchLiveBalance();
@@ -184,7 +335,7 @@ export default function AdminOrdersPage() {
     const total = orders.length;
     const completed = orders.filter((o) => o.status === 'COMPLETED').length;
     const partial = orders.filter((o) => o.status === 'PARTIAL').length;
-    const failed = orders.filter((o) => o.status === 'FAILED').length;
+    const failed = orders.filter((o) => o.status === 'FAILED' || o.status === 'CANCELED').length;
     const totalViews = orders.reduce((acc, o) => acc + (o.baseViews || 0), 0);
     const totalCost = orders.reduce((acc, o) => acc + (o.totalCost || 0), 0);
     const successRate = total > 0 ? ((completed / total) * 100).toFixed(1) : '0';
@@ -239,9 +390,16 @@ export default function AdminOrdersPage() {
         );
       case 'PARTIAL':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono">
             <AlertTriangle className="w-3.5 h-3.5" />
             PARTIAL
+          </span>
+        );
+      case 'CANCELED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono">
+            <Ban className="w-3.5 h-3.5" />
+            CANCELED
           </span>
         );
       case 'PENDING':
@@ -281,14 +439,14 @@ export default function AdminOrdersPage() {
     }
     if (s.includes('cancel')) {
       return (
-        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-500/15 text-rose-400 border border-rose-500/30">
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/15 text-amber-400 border border-amber-500/30">
           Canceled
         </span>
       );
     }
     if (s.includes('partial')) {
       return (
-        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/15 text-amber-400 border border-amber-500/30">
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-purple-500/15 text-purple-400 border border-purple-500/30">
           Partial
         </span>
       );
@@ -328,7 +486,7 @@ export default function AdminOrdersPage() {
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-slate-400">
-            Real-time tracking of bundled Instagram Reel dispatches, sub-orders & provider status sync
+            CRUD control, live delivery tracking, sub-orders & automated provider synchronization
           </p>
         </div>
 
@@ -467,7 +625,7 @@ export default function AdminOrdersPage() {
             {stats.completed} <span className="text-xs text-slate-400 font-normal">/ {stats.total}</span>
           </div>
           <div className="text-[11px] text-emerald-400 mt-1 font-mono">
-            {stats.failed} failed / pending
+            {stats.failed} failed / canceled
           </div>
         </div>
       </div>
@@ -487,7 +645,7 @@ export default function AdminOrdersPage() {
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           <Filter className="w-3.5 h-3.5 text-slate-500 mr-1 shrink-0" />
-          {['ALL', 'COMPLETED', 'PROCESSING', 'PARTIAL', 'FAILED', 'PENDING'].map((status) => (
+          {['ALL', 'COMPLETED', 'PROCESSING', 'PARTIAL', 'CANCELED', 'FAILED', 'PENDING'].map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
@@ -516,7 +674,7 @@ export default function AdminOrdersPage() {
                 <th className="py-4 px-4">Status</th>
                 <th className="py-4 px-4">Sub-Orders</th>
                 <th className="py-4 px-4">Date</th>
-                <th className="py-4 px-4 text-right">Actions</th>
+                <th className="py-4 px-4 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -538,9 +696,10 @@ export default function AdminOrdersPage() {
               ) : (
                 filteredOrders.map((order) => {
                   const isExpanded = expandedOrderId === order.id;
+                  const isRowLoading = actionLoadingId === order.id;
                   const dateStr = new Date(order.createdAt).toLocaleString();
 
-                  // Sub-order items: prefer relational items array, fallback to parsed responses JSON
+                  // Sub-order items
                   let subItems: SubOrderItem[] = order.items || [];
                   if (subItems.length === 0 && order.providerResponsesJson) {
                     try {
@@ -584,10 +743,10 @@ export default function AdminOrdersPage() {
                               href={order.targetReelUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-blue-400 hover:text-blue-300 truncate block items-center gap-1"
+                              className="text-blue-400 hover:text-blue-300 truncate block items-center gap-1 font-sans"
                               title={order.targetReelUrl}
                             >
-                              <span className="truncate block font-sans">
+                              <span className="truncate block">
                                 {order.targetReelUrl.replace('https://www.instagram.com/reel/', '')}
                               </span>
                             </a>
@@ -615,18 +774,69 @@ export default function AdminOrdersPage() {
                         <td className="py-3.5 px-4 text-slate-400 text-[11px] font-sans">
                           {dateStr}
                         </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <button
-                            onClick={() => toggleExpand(order.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-sans font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-                          >
-                            <span>{isExpanded ? 'Collapse' : 'Tracking'}</span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-3.5 h-3.5" />
-                            ) : (
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            )}
-                          </button>
+
+                        {/* UPGRADED ACTIONS COLUMN */}
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* 1. Edit (Blue): Opens edit target URL modal */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(order)}
+                              disabled={isRowLoading}
+                              title="Edit Target Reel URL"
+                              className="p-1.5 rounded-lg bg-blue-600/15 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 transition active:scale-95 disabled:opacity-40"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* 2. Stop (Orange): Sets status to CANCELED */}
+                            <button
+                              type="button"
+                              onClick={() => handleStopOrder(order.id)}
+                              disabled={isRowLoading || order.status === 'CANCELED'}
+                              title={order.status === 'CANCELED' ? 'Order Already Canceled' : 'Stop Order (Mark CANCELED)'}
+                              className={`p-1.5 rounded-lg border transition active:scale-95 disabled:opacity-40 ${
+                                order.status === 'CANCELED'
+                                  ? 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed'
+                                  : 'bg-amber-600/15 text-amber-400 hover:bg-amber-600 hover:text-white border-amber-500/30'
+                              }`}
+                            >
+                              {isRowLoading ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Ban className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            {/* 3. Delete (Red): Confirmation dialog & delete */}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOrder(order)}
+                              disabled={isRowLoading}
+                              title="Delete Order Permanently"
+                              className="p-1.5 rounded-lg bg-rose-600/15 text-rose-400 hover:bg-rose-600 hover:text-white border border-rose-500/30 transition active:scale-95 disabled:opacity-40"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* 4. Tracking / Details toggle */}
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(order.id)}
+                              title={isExpanded ? 'Collapse tracking details' : 'Expand tracking details'}
+                              className={`p-1.5 rounded-lg border transition active:scale-95 ${
+                                isExpanded
+                                  ? 'bg-indigo-600 text-white border-indigo-500'
+                                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'
+                              }`}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </div>
                         </td>
                       </tr>
 
@@ -824,6 +1034,85 @@ export default function AdminOrdersPage() {
           </table>
         </div>
       </div>
+
+      {/* EDIT TARGET URL MODAL */}
+      {editingOrder && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-lg p-6 rounded-3xl bg-[#0e131f] border border-slate-800 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Edit Target Reel URL</h3>
+                  <p className="text-xs text-slate-400 font-mono">Order #{editingOrder.id.slice(-8)}</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEditingOrder(null)}
+                disabled={savingEdit}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Target Instagram Media URL</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingOrder.targetUrl}
+                  onChange={(e) =>
+                    setEditingOrder((prev) => (prev ? { ...prev, targetUrl: e.target.value } : null))
+                  }
+                  placeholder="https://www.instagram.com/reel/C7xY9z0A1b2/"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-blue-500 transition"
+                />
+                <p className="text-[11px] text-slate-500">
+                  Fix typographical errors or update the destination link for this order.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={() => setEditingOrder(null)}
+                  disabled={savingEdit}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 active:scale-95 text-white shadow-lg shadow-blue-600/30 transition disabled:opacity-50"
+                >
+                  {savingEdit ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
