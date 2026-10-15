@@ -23,7 +23,9 @@ import {
   Zap,
   Loader2,
   AlertTriangle,
+  Activity,
 } from 'lucide-react';
+import Link from 'next/link';
 import {
   calculateQuantities,
   DEFAULT_PERCENTAGES,
@@ -264,7 +266,16 @@ export default function OrderForm() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/40 text-xs font-semibold text-emerald-300 hover:text-white transition shadow-sm"
+              title="Track live progress of all dispatched orders"
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Live Tracker</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            </Link>
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span>
@@ -808,6 +819,17 @@ export default function OrderForm() {
                   </div>
                 </div>
               )}
+
+              {/* Direct Live Tracker Link CTA */}
+              <div className="pt-2">
+                <Link
+                  href="/dashboard"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:via-teal-500 hover:to-cyan-500 text-white font-semibold text-xs tracking-wide uppercase transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.99]"
+                >
+                  <Activity className="w-4 h-4 text-emerald-200 animate-pulse" />
+                  <span>Open Live Order Tracking Dashboard (Phase 7) →</span>
+                </Link>
+              </div>
             </div>
           )}
         </div>

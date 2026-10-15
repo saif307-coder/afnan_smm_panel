@@ -24,6 +24,22 @@ export default function OrderPage() {
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Reel Simulator</span>
           </Link>
+
+          <div className="flex items-center gap-2.5">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/40 text-xs font-semibold text-emerald-300 hover:text-white transition shadow-sm"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Live Order Tracker</span>
+            </Link>
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-500/40 text-xs font-semibold text-indigo-300 hover:text-white transition shadow-sm"
+            >
+              <span>Admin Panel</span>
+            </Link>
+          </div>
         </div>
 
         <OrderForm />

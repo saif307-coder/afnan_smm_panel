@@ -25,9 +25,11 @@ import {
   Smartphone,
   Sparkles,
   PieChart,
-  Zap
+  Zap,
+  Activity
 } from 'lucide-react';
 import OrderForm from '@/components/OrderForm';
+import OrderTracker from '@/components/OrderTracker';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -99,8 +101,8 @@ export default function DashboardPreview() {
   const [audienceFilter, setAudienceFilter] = useState<'country' | 'age' | 'gender'>('country');
   const [showAndroidNavBar, setShowAndroidNavBar] = useState<boolean>(true);
 
-  // Main navigation view: Phase 3 Dynamic Order Form vs Simulator
-  const [activeMainTab, setActiveMainTab] = useState<'order' | 'simulator'>('order');
+  // Main navigation view: Phase 3 Dynamic Order Form vs Phase 7 Live Tracker vs Simulator
+  const [activeMainTab, setActiveMainTab] = useState<'order' | 'tracker' | 'simulator'>('order');
 
   const fetchCurrent = async () => {
     try {
@@ -247,6 +249,15 @@ export default function DashboardPreview() {
 
           <div className="flex items-center gap-3">
             <Link
+              href="/dashboard"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/80 border border-emerald-500/40 text-xs font-semibold text-emerald-300 hover:text-white transition shadow-sm"
+              title="Live Order Tracking Dashboard"
+            >
+              <Activity className="w-4 h-4 text-emerald-400" />
+              <span>Live Tracker</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            </Link>
+            <Link
               href="/admin"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-500/40 text-xs font-semibold text-indigo-300 hover:text-white transition shadow-sm"
               title="Admin Dashboard"
@@ -276,8 +287,8 @@ export default function DashboardPreview() {
           </div>
         )}
 
-        {/* View Switcher: Dynamic Order Dispatcher vs Instagram Simulator */}
-        <div className="flex items-center gap-3 p-1.5 bg-[#0e131f]/90 border border-slate-800/90 rounded-2xl w-fit backdrop-blur-xl">
+        {/* View Switcher: Dynamic Order Dispatcher vs Live Tracker vs Instagram Simulator */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 p-1.5 bg-[#0e131f]/90 border border-slate-800/90 rounded-2xl w-fit backdrop-blur-xl">
           <button
             type="button"
             onClick={() => setActiveMainTab('order')}
@@ -290,6 +301,23 @@ export default function DashboardPreview() {
             <Zap className="w-4 h-4" />
             <span>Dynamic Order Form (Phase 3)</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 text-white">Live</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('tracker')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+              activeMainTab === 'tracker'
+                ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white shadow-lg shadow-teal-600/30'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Activity className="w-4 h-4 text-emerald-400" />
+            <span>Live Order Tracker (Phase 7)</span>
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
           </button>
 
           <button
@@ -310,6 +338,13 @@ export default function DashboardPreview() {
         {activeMainTab === 'order' && (
           <div className="animate-in fade-in duration-300">
             <OrderForm />
+          </div>
+        )}
+
+        {/* View 2: Live Order Tracker (Phase 7) */}
+        {activeMainTab === 'tracker' && (
+          <div className="animate-in fade-in duration-300">
+            <OrderTracker />
           </div>
         )}
 
