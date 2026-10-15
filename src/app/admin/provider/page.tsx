@@ -80,13 +80,13 @@ const ALL_METRIC_TYPES = [
 export default function AdminProviderPage() {
   const [provider, setProvider] = useState<SmmProviderData | null>(null);
   const [mappings, setMappings] = useState<Record<string, { serviceId: string; costPer1000: number; minQuantity: number; isActive: boolean }>>({
-    VIEWS: { serviceId: '3299', costPer1000: 0.0032, minQuantity: 100, isActive: true },
-    LIKES: { serviceId: '2688', costPer1000: 0.0469, minQuantity: 10, isActive: true },
-    SAVES: { serviceId: '2740', costPer1000: 0.1563, minQuantity: 10, isActive: true },
-    SHARES: { serviceId: '2741', costPer1000: 0.0016, minQuantity: 10, isActive: true },
-    REPOSTS: { serviceId: '2738', costPer1000: 1.107, minQuantity: 10, isActive: true },
-    COMMENTS: { serviceId: '2717', costPer1000: 0.8044, minQuantity: 10, isActive: true },
-    FOLLOWERS: { serviceId: '2635', costPer1000: 1.5966, minQuantity: 50, isActive: true },
+    VIEWS: { serviceId: '12897', costPer1000: 0.0004, minQuantity: 10, isActive: true },
+    LIKES: { serviceId: '14749', costPer1000: 0.0090, minQuantity: 10, isActive: true },
+    SAVES: { serviceId: '14548', costPer1000: 0.0392, minQuantity: 1, isActive: true },
+    SHARES: { serviceId: '19608', costPer1000: 0.0010, minQuantity: 10, isActive: true },
+    REPOSTS: { serviceId: '14549', costPer1000: 0.2938, minQuantity: 1, isActive: true },
+    COMMENTS: { serviceId: '16946', costPer1000: 0.3498, minQuantity: 10, isActive: true },
+    FOLLOWERS: { serviceId: '18302', costPer1000: 0.1814, minQuantity: 10, isActive: true },
   });
 
   const [loading, setLoading] = useState(true);

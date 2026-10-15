@@ -843,184 +843,188 @@ export default function AdminOrdersPage() {
                       {/* Expanded Details Row */}
                       {isExpanded && (
                         <tr className="bg-slate-950/80 border-y border-slate-800">
-                          <td colSpan={8} className="p-4 sm:p-6 space-y-4 font-sans">
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                              {/* Left: Calculated Quantities Breakdown (5 Cols) */}
-                              <div className="lg:col-span-5 p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3">
-                                <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
-                                  <span className="font-bold text-white flex items-center gap-2">
-                                    <Layers className="w-4 h-4 text-indigo-400" />
-                                    <span>Calculated Metric Bundle</span>
-                                  </span>
-                                  <span className="text-slate-400 font-mono text-[11px]">
-                                    Base: {order.baseViews.toLocaleString()} views
-                                  </span>
+                          <td colSpan={8} className="p-0 font-sans">
+                            <div className="sticky left-0 w-full max-w-[calc(100vw-2rem)] sm:max-w-none mx-auto px-3 py-4 sm:p-6 overflow-x-hidden min-w-0 space-y-4">
+                              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 min-w-0">
+                                {/* Left: Calculated Quantities Breakdown */}
+                                <div className="lg:col-span-5 p-3.5 sm:p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3 min-w-0">
+                                  <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2 min-w-0 gap-2">
+                                    <span className="font-bold text-white flex items-center gap-2 min-w-0 truncate">
+                                      <Layers className="w-4 h-4 text-indigo-400 shrink-0" />
+                                      <span className="truncate">Calculated Metric Bundle</span>
+                                    </span>
+                                    <span className="text-slate-400 font-mono text-[11px] shrink-0">
+                                      Base: {order.baseViews.toLocaleString()} views
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-4 text-xs font-mono">
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
+                                        <Heart className="w-3 h-3 text-rose-400 shrink-0" /> <span className="truncate">Likes</span>
+                                      </span>
+                                      <span className="text-rose-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                        {order.likes.toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
+                                        <Bookmark className="w-3 h-3 text-amber-400 shrink-0" /> <span className="truncate">Saves</span>
+                                      </span>
+                                      <span className="text-amber-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                        {order.saves.toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
+                                        <Share2 className="w-3 h-3 text-sky-400 shrink-0" /> <span className="truncate">Shares</span>
+                                      </span>
+                                      <span className="text-sky-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                        {order.shares.toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
+                                        <Repeat2 className="w-3 h-3 text-emerald-400 shrink-0" /> <span className="truncate">Reposts</span>
+                                      </span>
+                                      <span className="text-emerald-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                        {order.reposts.toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
+                                        <MessageCircle className="w-3 h-3 text-purple-400 shrink-0" /> <span className="truncate">Comments</span>
+                                      </span>
+                                      <span className="text-purple-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                        {order.comments.toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                      <span className="text-slate-400 text-[10px] flex items-center gap-1 min-w-0 truncate">
+                                        <UserPlus className="w-3 h-3 text-fuchsia-400 shrink-0" /> <span className="truncate">Follows</span>
+                                      </span>
+                                      <span className="text-fuchsia-300 font-bold text-sm block mt-0.5 truncate min-w-0">
+                                        {order.followers.toLocaleString()}
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-2.5 text-xs font-mono">
-                                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
-                                    <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                                      <Heart className="w-3 h-3 text-rose-400" /> Likes
+                                {/* Right: Live Sub-Order Tracking Items */}
+                                <div className="lg:col-span-7 p-3.5 sm:p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3 min-w-0">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs border-b border-slate-800 pb-2 min-w-0 gap-1">
+                                    <span className="font-bold text-white flex items-center gap-2 min-w-0 truncate">
+                                      <Code2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                      <span className="truncate">Live Sub-Order Delivery Tracking (Phase 7)</span>
                                     </span>
-                                    <span className="text-rose-300 font-bold text-sm block mt-0.5">
-                                      {order.likes.toLocaleString()}
-                                    </span>
-                                  </div>
-
-                                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
-                                    <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                                      <Bookmark className="w-3 h-3 text-amber-400" /> Saves
-                                    </span>
-                                    <span className="text-amber-300 font-bold text-sm block mt-0.5">
-                                      {order.saves.toLocaleString()}
+                                    <span className="text-slate-400 text-[11px] truncate shrink-0">
+                                      Provider: {order.provider?.name || 'SMM Provider'}
                                     </span>
                                   </div>
 
-                                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
-                                    <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                                      <Share2 className="w-3 h-3 text-sky-400" /> Shares
-                                    </span>
-                                    <span className="text-sky-300 font-bold text-sm block mt-0.5">
-                                      {order.shares.toLocaleString()}
-                                    </span>
-                                  </div>
+                                  {order.errorMessage && (
+                                    <div className="p-2.5 sm:p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2 min-w-0">
+                                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                                      <span className="font-mono text-[11px] leading-relaxed break-words min-w-0 flex-1">
+                                        {order.errorMessage}
+                                      </span>
+                                    </div>
+                                  )}
 
-                                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
-                                    <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                                      <Repeat2 className="w-3 h-3 text-emerald-400" /> Reposts
-                                    </span>
-                                    <span className="text-emerald-300 font-bold text-sm block mt-0.5">
-                                      {order.reposts.toLocaleString()}
-                                    </span>
-                                  </div>
+                                  {subItems.length > 0 ? (
+                                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                      {subItems.map((item, idx) => {
+                                        const quantity = item.quantity || 0;
+                                        const remains = item.remains !== undefined && item.remains !== null ? item.remains : quantity;
+                                        const progressPct =
+                                          quantity > 0
+                                            ? Math.min(100, Math.max(0, Math.round(((quantity - remains) / quantity) * 100)))
+                                            : 100;
 
-                                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
-                                    <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                                      <MessageCircle className="w-3 h-3 text-purple-400" /> Comments
-                                    </span>
-                                    <span className="text-purple-300 font-bold text-sm block mt-0.5">
-                                      {order.comments.toLocaleString()}
-                                    </span>
-                                  </div>
-
-                                  <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
-                                    <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                                      <UserPlus className="w-3 h-3 text-fuchsia-400" /> Follows
-                                    </span>
-                                    <span className="text-fuchsia-300 font-bold text-sm block mt-0.5">
-                                      {order.followers.toLocaleString()}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Right: Live Sub-Order Tracking Items (7 Cols) */}
-                              <div className="lg:col-span-7 p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3">
-                                <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
-                                  <span className="font-bold text-white flex items-center gap-2">
-                                    <Code2 className="w-4 h-4 text-emerald-400" />
-                                    <span>Live Sub-Order Delivery Tracking (Phase 7)</span>
-                                  </span>
-                                  <span className="text-slate-400 text-[11px]">
-                                    Provider: {order.provider?.name || 'SMM Provider'}
-                                  </span>
-                                </div>
-
-                                {order.errorMessage && (
-                                  <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
-                                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-                                    <span className="font-mono text-[11px] leading-relaxed">
-                                      {order.errorMessage}
-                                    </span>
-                                  </div>
-                                )}
-
-                                {subItems.length > 0 ? (
-                                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                                    {subItems.map((item, idx) => {
-                                      const quantity = item.quantity || 0;
-                                      const remains = item.remains !== undefined && item.remains !== null ? item.remains : quantity;
-                                      const progressPct =
-                                        quantity > 0
-                                          ? Math.min(100, Math.max(0, Math.round(((quantity - remains) / quantity) * 100)))
-                                          : 100;
-
-                                      return (
-                                        <div
-                                          key={item.id || idx}
-                                          className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 text-xs space-y-2"
-                                        >
-                                          <div className="flex items-center justify-between font-mono">
-                                            <div className="flex items-center gap-2">
-                                              <span className="font-bold text-white text-xs">
-                                                {item.metricType}
-                                              </span>
-                                              <span className="text-slate-500 text-[11px]">
-                                                {quantity.toLocaleString()} qty
-                                              </span>
-                                              {item.serviceId && (
-                                                <span className="text-[10px] text-slate-500">
-                                                  (Svc #{item.serviceId})
+                                        return (
+                                          <div
+                                            key={item.id || idx}
+                                            className="p-3 sm:p-4 rounded-xl bg-slate-950 border border-slate-800/80 text-xs space-y-2 min-w-0"
+                                          >
+                                            <div className="flex flex-wrap items-center justify-between gap-2 font-mono min-w-0">
+                                              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                                                <span className="font-bold text-white text-xs">
+                                                  {item.metricType}
                                                 </span>
-                                              )}
-                                            </div>
-
-                                            <div className="flex items-center gap-2">
-                                              {getItemStatusBadge(item.status)}
-                                              {item.providerOrderId ? (
-                                                <span className="text-emerald-400 font-bold text-[11px] bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                                                  Order #{item.providerOrderId}
+                                                <span className="text-slate-500 text-[11px]">
+                                                  {quantity.toLocaleString()} qty
                                                 </span>
-                                              ) : (
-                                                <span className="text-slate-500 text-[10px]">No Order ID</span>
-                                              )}
+                                                {item.serviceId && (
+                                                  <span className="text-[10px] text-slate-500">
+                                                    (Svc #{item.serviceId})
+                                                  </span>
+                                                )}
+                                              </div>
+
+                                              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                                <div className="break-words min-w-0">
+                                                  {getItemStatusBadge(item.status)}
+                                                </div>
+                                                {item.providerOrderId ? (
+                                                  <span className="text-emerald-400 font-bold text-[11px] bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 whitespace-nowrap">
+                                                    Order #{item.providerOrderId}
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-slate-500 text-[10px] whitespace-nowrap">No Order ID</span>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            {/* Live Tracking Numbers: Start Count & Remains */}
+                                            <div className="flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400 pt-1 gap-1 min-w-0">
+                                              <div className="min-w-0">
+                                                <span className="text-slate-500">Start Count: </span>
+                                                <span className="font-bold text-slate-200">
+                                                  {item.startCount !== null && item.startCount !== undefined
+                                                    ? item.startCount.toLocaleString()
+                                                    : '—'}
+                                                </span>
+                                              </div>
+
+                                              <div className="min-w-0">
+                                                <span className="text-slate-500">Remains: </span>
+                                                <span className="font-bold text-amber-300">
+                                                  {item.remains !== null && item.remains !== undefined
+                                                    ? `${item.remains.toLocaleString()} / ${quantity.toLocaleString()}`
+                                                    : '—'}
+                                                </span>
+                                              </div>
+
+                                              <div className="min-w-0">
+                                                <span className="text-slate-500">Progress: </span>
+                                                <span className="font-bold text-emerald-400">
+                                                  {progressPct}%
+                                                </span>
+                                              </div>
+                                            </div>
+
+                                            {/* Mini Progress Bar */}
+                                            <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                                              <div
+                                                className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-500"
+                                                style={{ width: `${progressPct}%` }}
+                                              />
                                             </div>
                                           </div>
-
-                                          {/* Live Tracking Numbers: Start Count & Remains */}
-                                          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
-                                            <div>
-                                              <span className="text-slate-500">Start Count: </span>
-                                              <span className="font-bold text-slate-200">
-                                                {item.startCount !== null && item.startCount !== undefined
-                                                  ? item.startCount.toLocaleString()
-                                                  : '—'}
-                                              </span>
-                                            </div>
-
-                                            <div>
-                                              <span className="text-slate-500">Remains: </span>
-                                              <span className="font-bold text-amber-300">
-                                                {item.remains !== null && item.remains !== undefined
-                                                  ? `${item.remains.toLocaleString()} / ${quantity.toLocaleString()}`
-                                                  : '—'}
-                                              </span>
-                                            </div>
-
-                                            <div>
-                                              <span className="text-slate-500">Progress: </span>
-                                              <span className="font-bold text-emerald-400">
-                                                {progressPct}%
-                                              </span>
-                                            </div>
-                                          </div>
-
-                                          {/* Mini Progress Bar */}
-                                          <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
-                                            <div
-                                              className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-500"
-                                              style={{ width: `${progressPct}%` }}
-                                            />
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                ) : (
-                                  <div className="text-xs text-slate-500 italic p-4 text-center">
-                                    No itemized provider tracking records attached to this order.
-                                  </div>
-                                )}
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-slate-500 italic p-4 text-center">
+                                      No itemized provider tracking records attached to this order.
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </td>
