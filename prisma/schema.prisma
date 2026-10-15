@@ -44,6 +44,7 @@ model AdminSettings {
   followsPercentage     Float    @default(0.025)
   viewersPercentage     Float    @default(67.5)
   avgWatchTimeRatio     Float    @default(0.7)
+  CRON_STATUS_SYNC_ACTIVE Boolean @default(true)
   updatedAt             DateTime @updatedAt
   createdAt             DateTime @default(now())
 }

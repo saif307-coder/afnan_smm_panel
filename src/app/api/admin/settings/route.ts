@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     'viewersPercentage',
   ] as const;
 
-  const updateData: Record<string, number> = {};
+  const updateData: Record<string, unknown> = {};
 
   for (const field of percentageFields) {
     if (body[field] !== undefined) {
@@ -77,6 +77,14 @@ export async function POST(req: NextRequest) {
       errors.push(validationError('avgWatchTimeRatio', 'avgWatchTimeRatio must be a number between 0 and 1'));
     } else {
       updateData.avgWatchTimeRatio = body.avgWatchTimeRatio as number;
+    }
+  }
+
+  if (body.CRON_STATUS_SYNC_ACTIVE !== undefined) {
+    if (typeof body.CRON_STATUS_SYNC_ACTIVE !== 'boolean') {
+      errors.push(validationError('CRON_STATUS_SYNC_ACTIVE', 'CRON_STATUS_SYNC_ACTIVE must be a boolean'));
+    } else {
+      updateData.CRON_STATUS_SYNC_ACTIVE = body.CRON_STATUS_SYNC_ACTIVE;
     }
   }
 
@@ -102,7 +110,7 @@ export async function POST(req: NextRequest) {
       });
     } else {
       settings = await prisma.adminSettings.create({
-        data: updateData,
+        data: updateData as unknown as Parameters<typeof prisma.adminSettings.create>[0]['data'],
       });
     }
 
@@ -114,4 +122,8 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+export async function PATCH(req: NextRequest) {
+  return POST(req);
 }
