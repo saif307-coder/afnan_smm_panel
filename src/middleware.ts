@@ -7,6 +7,19 @@ export function middleware(req: NextRequest) {
   const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
   const isAuthenticated = isValidAdminToken(token);
 
+  // 0. Root path redirect
+  if (pathname === '/') {
+    if (isAuthenticated) {
+      return NextResponse.redirect(new URL('/admin', req.url));
+    }
+    return NextResponse.redirect(new URL('/admin/login', req.url));
+  }
+
+  // 0b. /login alias redirect
+  if (pathname === '/login') {
+    return NextResponse.redirect(new URL('/admin/login', req.url));
+  }
+
   // 1. If user is on /admin/login
   if (pathname === '/admin/login') {
     if (isAuthenticated) {
@@ -40,5 +53,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/admin/:path*'],
+  matcher: ['/', '/login', '/admin/:path*', '/api/admin/:path*'],
 };
