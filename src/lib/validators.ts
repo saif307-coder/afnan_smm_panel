@@ -12,6 +12,7 @@ export const VALID_METRIC_TYPES = [
   'SHARES',
   'REPOSTS',
   'FOLLOWS',
+  'FOLLOWERS',
 ] as const;
 
 export type MetricType = (typeof VALID_METRIC_TYPES)[number];

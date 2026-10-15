@@ -63,6 +63,7 @@ interface ServiceMappingItem {
   metricType: string;
   serviceId: string;
   costPer1000: number;
+  minQuantity?: number;
   isActive: boolean;
 }
 
@@ -78,14 +79,14 @@ const ALL_METRIC_TYPES = [
 
 export default function AdminProviderPage() {
   const [provider, setProvider] = useState<SmmProviderData | null>(null);
-  const [mappings, setMappings] = useState<Record<string, { serviceId: string; costPer1000: number; isActive: boolean }>>({
-    VIEWS: { serviceId: '3299', costPer1000: 0.0032, isActive: true },
-    LIKES: { serviceId: '2688', costPer1000: 0.0469, isActive: true },
-    SAVES: { serviceId: '2740', costPer1000: 0.1563, isActive: true },
-    SHARES: { serviceId: '2741', costPer1000: 0.0016, isActive: true },
-    REPOSTS: { serviceId: '2738', costPer1000: 1.107, isActive: true },
-    COMMENTS: { serviceId: '2717', costPer1000: 0.8044, isActive: true },
-    FOLLOWERS: { serviceId: '2635', costPer1000: 1.5966, isActive: true },
+  const [mappings, setMappings] = useState<Record<string, { serviceId: string; costPer1000: number; minQuantity: number; isActive: boolean }>>({
+    VIEWS: { serviceId: '3299', costPer1000: 0.0032, minQuantity: 100, isActive: true },
+    LIKES: { serviceId: '2688', costPer1000: 0.0469, minQuantity: 10, isActive: true },
+    SAVES: { serviceId: '2740', costPer1000: 0.1563, minQuantity: 10, isActive: true },
+    SHARES: { serviceId: '2741', costPer1000: 0.0016, minQuantity: 10, isActive: true },
+    REPOSTS: { serviceId: '2738', costPer1000: 1.107, minQuantity: 10, isActive: true },
+    COMMENTS: { serviceId: '2717', costPer1000: 0.8044, minQuantity: 10, isActive: true },
+    FOLLOWERS: { serviceId: '2635', costPer1000: 1.5966, minQuantity: 50, isActive: true },
   });
 
   const [loading, setLoading] = useState(true);
@@ -146,6 +147,7 @@ export default function AdminProviderPage() {
             newMapState[item.metricType] = {
               serviceId: item.serviceId,
               costPer1000: item.costPer1000,
+              minQuantity: item.minQuantity ?? 0,
               isActive: item.isActive,
             };
           }
@@ -367,6 +369,7 @@ export default function AdminProviderPage() {
           metricType,
           serviceId: mapping.serviceId,
           costPer1000: mapping.costPer1000,
+          minQuantity: mapping.minQuantity ?? 0,
           isActive: mapping.isActive,
         }),
       });
@@ -379,7 +382,7 @@ export default function AdminProviderPage() {
       setToast({
         show: true,
         type: 'success',
-        message: `Mapping for ${metricType} updated to Service ID #${mapping.serviceId}!`,
+        message: `Mapping for ${metricType} updated (Service ID #${mapping.serviceId}, Min Qty: ${mapping.minQuantity ?? 0})!`,
       });
     } catch (err) {
       setToast({
@@ -436,6 +439,10 @@ export default function AdminProviderPage() {
       typeof service.rate === 'number'
         ? service.rate
         : parseFloat(String(service.rate)) || 0;
+    const minNum =
+      typeof service.min === 'number'
+        ? service.min
+        : parseInt(String(service.min || 0), 10) || 0;
 
     setMappings((prev) => ({
       ...prev,
@@ -443,6 +450,7 @@ export default function AdminProviderPage() {
         ...(prev[metricType] || { isActive: true }),
         serviceId: sId,
         costPer1000: rateNum,
+        minQuantity: minNum,
         isActive: true,
       },
     }));
@@ -450,7 +458,7 @@ export default function AdminProviderPage() {
     setToast({
       show: true,
       type: 'success',
-      message: `Applied ${metricType} -> ID #${sId} ($${rateNum}/1k). Click 'Save' in Section B to store in database.`,
+      message: `Applied ${metricType} -> ID #${sId} ($${rateNum}/1k, Min: ${minNum}). Click 'Save' in Section B to store in database.`,
     });
 
     const el = document.getElementById('section-mappings');
@@ -806,7 +814,7 @@ export default function AdminProviderPage() {
               <span>Section B: Service ID Mappings</span>
             </h2>
             <p className="text-xs text-slate-400">
-              Maps internal metrics to active provider service IDs for automated order dispatch
+              Maps internal metrics to active provider service IDs and minimum quantity thresholds (orders below min are automatically skipped to prevent provider errors)
             </p>
           </div>
           <span className="text-[11px] font-mono font-semibold text-fuchsia-400 bg-fuchsia-500/10 px-2.5 py-1 rounded-lg border border-fuchsia-500/20">
@@ -821,13 +829,14 @@ export default function AdminProviderPage() {
                 <th className="py-3 px-4">Metric Target</th>
                 <th className="py-3 px-4">Provider Service ID</th>
                 <th className="py-3 px-4">Cost / 1,000 ($)</th>
+                <th className="py-3 px-4">Min Quantity</th>
                 <th className="py-3 px-4">Active</th>
                 <th className="py-3 px-4 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
               {ALL_METRIC_TYPES.map((m) => {
-                const current = mappings[m.type] || { serviceId: '', costPer1000: 0, isActive: true };
+                const current = mappings[m.type] || { serviceId: '', costPer1000: 0, minQuantity: 0, isActive: true };
                 const isSaving = savingMapping === m.type;
 
                 return (
@@ -874,6 +883,28 @@ export default function AdminProviderPage() {
                             })
                           }
                           className="w-full pl-5 pr-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 focus:border-indigo-500 text-xs text-white font-mono"
+                        />
+                      </div>
+                    </td>
+
+                    <td className="py-3 px-4">
+                      <div className="relative w-28">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={current.minQuantity ?? 0}
+                          onChange={(e) =>
+                            setMappings({
+                              ...mappings,
+                              [m.type]: {
+                                ...current,
+                                minQuantity: Math.max(0, parseInt(e.target.value, 10) || 0),
+                              },
+                            })
+                          }
+                          placeholder="0 (no limit)"
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 focus:border-indigo-500 text-xs text-white font-mono"
                         />
                       </div>
                     </td>

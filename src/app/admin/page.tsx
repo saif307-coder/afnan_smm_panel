@@ -558,6 +558,8 @@ export default function AdminOrdersPage() {
                                             className={`w-2 h-2 rounded-full ${
                                               resp.status === 'SUCCESS'
                                                 ? 'bg-emerald-400'
+                                                : resp.status === 'SKIPPED'
+                                                ? 'bg-amber-400'
                                                 : 'bg-rose-400'
                                             }`}
                                           />
@@ -573,6 +575,13 @@ export default function AdminOrdersPage() {
                                           {resp.status === 'SUCCESS' ? (
                                             <span className="text-emerald-400 font-bold">
                                               Order #{resp.providerOrderId}
+                                            </span>
+                                          ) : resp.status === 'SKIPPED' ? (
+                                            <span
+                                              className="text-amber-400/90 text-[10px] font-medium truncate max-w-[180px] block font-sans"
+                                              title={resp.error}
+                                            >
+                                              {resp.error || 'Skipped (Below Min)'}
                                             </span>
                                           ) : (
                                             <span

@@ -10,13 +10,13 @@ const OFFICIAL_PROVIDER = {
 };
 
 const DEFAULT_MAPPINGS = [
-  { metricType: 'VIEWS', serviceId: '3299', costPer1000: 0.0032 },
-  { metricType: 'LIKES', serviceId: '2688', costPer1000: 0.0469 },
-  { metricType: 'SAVES', serviceId: '2740', costPer1000: 0.1563 },
-  { metricType: 'SHARES', serviceId: '2741', costPer1000: 0.0016 },
-  { metricType: 'REPOSTS', serviceId: '2738', costPer1000: 1.1070 },
-  { metricType: 'COMMENTS', serviceId: '2717', costPer1000: 0.8044 },
-  { metricType: 'FOLLOWERS', serviceId: '2635', costPer1000: 1.5966 },
+  { metricType: 'VIEWS', serviceId: '3299', costPer1000: 0.0032, minQuantity: 100 },
+  { metricType: 'LIKES', serviceId: '2688', costPer1000: 0.0469, minQuantity: 10 },
+  { metricType: 'SAVES', serviceId: '2740', costPer1000: 0.1563, minQuantity: 10 },
+  { metricType: 'SHARES', serviceId: '2741', costPer1000: 0.0016, minQuantity: 10 },
+  { metricType: 'REPOSTS', serviceId: '2738', costPer1000: 1.1070, minQuantity: 10 },
+  { metricType: 'COMMENTS', serviceId: '2717', costPer1000: 0.8044, minQuantity: 10 },
+  { metricType: 'FOLLOWERS', serviceId: '2635', costPer1000: 1.5966, minQuantity: 10 },
 ];
 
 export async function ensureOfficialProvider() {
@@ -62,6 +62,7 @@ export async function ensureOfficialProvider() {
       update: {
         serviceId: m.serviceId,
         costPer1000: m.costPer1000,
+        minQuantity: m.minQuantity ?? 0,
         isActive: true,
       },
       create: {
@@ -69,10 +70,11 @@ export async function ensureOfficialProvider() {
         metricType: m.metricType,
         serviceId: m.serviceId,
         costPer1000: m.costPer1000,
+        minQuantity: m.minQuantity ?? 0,
         isActive: true,
       },
     });
-    console.log(`  Mapped ${m.metricType} -> Service ID #${m.serviceId} ($${m.costPer1000}/1k)`);
+    console.log(`  Mapped ${m.metricType} -> Service ID #${m.serviceId} ($${m.costPer1000}/1k, Min: ${m.minQuantity})`);
   }
 
   console.log('--- Official SMM Provider initialized successfully! ---');

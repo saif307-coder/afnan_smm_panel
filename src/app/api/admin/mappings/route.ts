@@ -90,6 +90,10 @@ export async function POST(req: NextRequest) {
     errors.push(validationError('costPer1000', 'costPer1000 must be a non-negative number'));
   }
 
+  if (body.minQuantity !== undefined && !isValidNumber(body.minQuantity, { min: 0 })) {
+    errors.push(validationError('minQuantity', 'minQuantity must be a non-negative number'));
+  }
+
   if (errors.length > 0) {
     return jsonResponse({ success: false, errors }, { status: 400 });
   }
@@ -98,6 +102,7 @@ export async function POST(req: NextRequest) {
   const metricType = body.metricType as string;
   const serviceId = (body.serviceId as string).trim();
   const costPer1000 = typeof body.costPer1000 === 'number' ? body.costPer1000 : 0;
+  const minQuantity = typeof body.minQuantity === 'number' ? Math.floor(body.minQuantity) : parseInt(String(body.minQuantity || 0), 10) || 0;
   const isActive = body.isActive !== undefined ? Boolean(body.isActive) : true;
 
   try {
@@ -121,6 +126,7 @@ export async function POST(req: NextRequest) {
       update: {
         serviceId,
         costPer1000,
+        minQuantity,
         isActive,
       },
       create: {
@@ -128,6 +134,7 @@ export async function POST(req: NextRequest) {
         metricType,
         serviceId,
         costPer1000,
+        minQuantity,
         isActive,
       },
       include: {

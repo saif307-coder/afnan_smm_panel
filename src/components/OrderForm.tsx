@@ -792,6 +792,10 @@ export default function OrderForm() {
                               <span className="text-emerald-400 font-bold">
                                 Order #{item.providerOrderId}
                               </span>
+                            ) : item.status === 'SKIPPED' ? (
+                              <span className="text-amber-400/90 text-[11px] font-medium max-w-[180px] truncate block font-sans" title={item.error}>
+                                {item.error || 'Skipped (Below Min)'}
+                              </span>
                             ) : (
                               <span className="text-rose-400 text-[11px] max-w-[180px] truncate block" title={item.error}>
                                 {item.error || 'Failed'}

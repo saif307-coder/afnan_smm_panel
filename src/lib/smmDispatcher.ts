@@ -72,11 +72,12 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
   }
 
   // Map metricType -> mapping
-  const mappingMap = new Map<string, { serviceId: string; costPer1000: number }>();
+  const mappingMap = new Map<string, { serviceId: string; costPer1000: number; minQuantity: number }>();
   for (const m of provider.mappings) {
     mappingMap.set(m.metricType.toUpperCase(), {
       serviceId: m.serviceId,
       costPer1000: m.costPer1000,
+      minQuantity: m.minQuantity ?? 0,
     });
   }
 
@@ -102,7 +103,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
       continue;
     }
 
-    const mapping = mappingMap.get(item.metricType);
+    const mapping = mappingMap.get(item.metricType) || (item.metricType === 'FOLLOWERS' ? mappingMap.get('FOLLOWS') : undefined);
     if (!mapping) {
       dispatchResults.push({
         metricType: item.metricType,
@@ -110,6 +111,20 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
         cost: 0,
         status: 'SKIPPED',
         error: `No active service mapping found for metric "${item.metricType}"`,
+      });
+      continue;
+    }
+
+    // Smart skipping logic: Check minimum quantity required by provider service mapping
+    if (mapping.minQuantity > 0 && item.quantity < mapping.minQuantity) {
+      console.log(`[SMM Dispatcher] Skipped ${item.metricType}: calculated ${item.quantity} is below minimum requirement (${mapping.minQuantity})`);
+      dispatchResults.push({
+        metricType: item.metricType,
+        serviceId: mapping.serviceId,
+        quantity: item.quantity,
+        cost: 0,
+        status: 'SKIPPED',
+        error: 'Skipped (Below Min)',
       });
       continue;
     }
@@ -194,6 +209,8 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     overallStatus = 'COMPLETED';
   } else if (successCount > 0 && failureCount > 0) {
     overallStatus = 'PARTIAL';
+  } else if (successCount === 0 && failureCount === 0 && dispatchResults.length > 0) {
+    overallStatus = 'COMPLETED';
   } else {
     overallStatus = 'FAILED';
   }
