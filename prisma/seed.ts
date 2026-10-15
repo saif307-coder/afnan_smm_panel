@@ -81,7 +81,7 @@ async function main() {
         costPer1000: m.costPer1000,
         minQuantity: m.minQuantity ?? 0,
         isActive: true,
-      },
+      } as any,
       create: {
         providerId: provider.id,
         metricType: m.metricType,
@@ -89,7 +89,7 @@ async function main() {
         costPer1000: m.costPer1000,
         minQuantity: m.minQuantity ?? 0,
         isActive: true,
-      },
+      } as any,
     });
   }
   console.log('✓ All 7 Service Mappings seeded');

@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
         costPer1000,
         minQuantity,
         isActive,
-      },
+      } as any,
       create: {
         providerId,
         metricType,
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
         costPer1000,
         minQuantity,
         isActive,
-      },
+      } as any,
       include: {
         provider: {
           select: { id: true, name: true },

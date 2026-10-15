@@ -64,7 +64,7 @@ export async function ensureOfficialProvider() {
         costPer1000: m.costPer1000,
         minQuantity: m.minQuantity ?? 0,
         isActive: true,
-      },
+      } as any,
       create: {
         providerId: provider.id,
         metricType: m.metricType,
@@ -72,7 +72,7 @@ export async function ensureOfficialProvider() {
         costPer1000: m.costPer1000,
         minQuantity: m.minQuantity ?? 0,
         isActive: true,
-      },
+      } as any,
     });
     console.log(`  Mapped ${m.metricType} -> Service ID #${m.serviceId} ($${m.costPer1000}/1k, Min: ${m.minQuantity})`);
   }

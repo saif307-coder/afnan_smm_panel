@@ -77,7 +77,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     mappingMap.set(m.metricType.toUpperCase(), {
       serviceId: m.serviceId,
       costPer1000: m.costPer1000,
-      minQuantity: m.minQuantity ?? 0,
+      minQuantity: (m as { minQuantity?: number }).minQuantity ?? 0,
     });
   }
 
