@@ -6,8 +6,12 @@
   "outputDirectory": ".next",
   "crons": [
     {
-      "path": "/api/cron/sync",
+      "path": "/api/cron/sync-orders",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/sync",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

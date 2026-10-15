@@ -150,6 +150,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </div>
 
             <Link
+              href="/dashboard"
+              target="_blank"
+              className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/40 transition"
+            >
+              <span className="flex items-center gap-2.5">
+                <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Live Order Tracker</span>
+              </span>
+              <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+            </Link>
+
+            <Link
               href="/order"
               target="_blank"
               className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/40 transition"

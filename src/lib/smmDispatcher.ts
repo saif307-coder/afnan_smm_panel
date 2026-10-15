@@ -221,16 +221,50 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     .map((d) => `${d.metricType}: ${d.error}`);
   const errorMessage = errors.length > 0 ? errors.join(' | ') : null;
 
-  // 6. Update Order in Prisma Database
-  await prisma.order.update({
-    where: { id: order.id },
-    data: {
-      status: overallStatus,
-      totalCost: totalSuccessfulCost,
-      providerId: provider.id,
-      providerResponsesJson: JSON.stringify(dispatchResults),
-      errorMessage,
-    },
+  // 6. Update Order and create/update individual OrderItem records in Prisma Database
+  await prisma.$transaction(async (tx) => {
+    await tx.order.update({
+      where: { id: order.id },
+      data: {
+        status: overallStatus,
+        totalCost: totalSuccessfulCost,
+        providerId: provider.id,
+        providerResponsesJson: JSON.stringify(dispatchResults),
+        errorMessage,
+      },
+    });
+
+    // Remove any previously recorded items for this order before re-recording
+    await tx.orderItem.deleteMany({
+      where: { orderId: order.id },
+    });
+
+    // Insert OrderItem records for each metric
+    for (const d of dispatchResults) {
+      let initialStatus = 'Pending';
+      if (d.status === 'SUCCESS') {
+        initialStatus = 'Pending';
+      } else if (d.status === 'SKIPPED') {
+        initialStatus = 'Skipped';
+      } else {
+        initialStatus = 'Failed';
+      }
+
+      await tx.orderItem.create({
+        data: {
+          orderId: order.id,
+          metricType: d.metricType,
+          serviceId: d.serviceId ? String(d.serviceId) : null,
+          quantity: d.quantity,
+          cost: d.cost,
+          providerOrderId: d.providerOrderId !== undefined && d.providerOrderId !== null ? String(d.providerOrderId) : null,
+          status: initialStatus,
+          startCount: null,
+          remains: d.quantity,
+          errorMessage: d.error || null,
+        },
+      });
+    }
   });
 
   return {

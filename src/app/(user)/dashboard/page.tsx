@@ -1,0 +1,607 @@
+'use client';
+
+import React, { useEffect, useState, useMemo } from 'react';
+import Link from 'next/link';
+import {
+  Sparkles,
+  ShoppingBag,
+  RefreshCw,
+  Search,
+  Filter,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Heart,
+  Bookmark,
+  Share2,
+  Repeat2,
+  MessageCircle,
+  UserPlus,
+  Eye,
+  Activity,
+  Layers,
+  ArrowRight,
+  TrendingUp,
+  ShieldCheck,
+  AlertCircle,
+} from 'lucide-react';
+
+interface SubOrderItem {
+  id: string;
+  metricType: string;
+  serviceId?: string | null;
+  quantity: number;
+  cost: number;
+  providerOrderId?: string | null;
+  status: string;
+  startCount?: number | null;
+  remains?: number | null;
+  errorMessage?: string | null;
+}
+
+interface OrderData {
+  id: string;
+  targetReelUrl: string | null;
+  baseViews: number;
+  likes: number;
+  saves: number;
+  shares: number;
+  reposts: number;
+  comments: number;
+  followers: number;
+  totalCost: number;
+  status: string;
+  providerResponsesJson?: string | null;
+  items?: SubOrderItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export default function ClientDashboardPage() {
+  const [orders, setOrders] = useState<OrderData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/orders?limit=50');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        setOrders(data.data);
+        // By default expand the newest active order
+        if (data.data.length > 0) {
+          setExpandedOrders((prev) => ({
+            ...prev,
+            [data.data[0].id]: true,
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load orders for client dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const toggleExpand = (orderId: string) => {
+    setExpandedOrders((prev) => ({
+      ...prev,
+      [orderId]: !prev[orderId],
+    }));
+  };
+
+  // Helper to extract or construct sub-orders from order.items or providerResponsesJson
+  const getSubOrders = (order: OrderData): SubOrderItem[] => {
+    if (order.items && order.items.length > 0) {
+      return order.items;
+    }
+    if (order.providerResponsesJson) {
+      try {
+        const parsed = JSON.parse(order.providerResponsesJson);
+        if (Array.isArray(parsed)) {
+          return parsed.map((p, idx) => ({
+            id: `${order.id}-item-${idx}`,
+            metricType: p.metricType || 'METRIC',
+            serviceId: p.serviceId,
+            quantity: p.quantity || 0,
+            cost: p.cost || 0,
+            providerOrderId: p.providerOrderId ? String(p.providerOrderId) : null,
+            status: p.externalStatus || (p.status === 'SUCCESS' ? 'Pending' : p.status || 'Failed'),
+            startCount: p.startCount,
+            remains: p.remains,
+            errorMessage: p.error,
+          }));
+        }
+      } catch {
+        // failed parse
+      }
+    }
+    // Fallback: Build default metric items based on non-zero quantities in order
+    const list: SubOrderItem[] = [
+      { id: `${order.id}-v`, metricType: 'VIEWS', quantity: order.baseViews, cost: 0, status: order.status, remains: order.status === 'COMPLETED' ? 0 : order.baseViews },
+      { id: `${order.id}-l`, metricType: 'LIKES', quantity: order.likes, cost: 0, status: order.status, remains: order.status === 'COMPLETED' ? 0 : order.likes },
+      { id: `${order.id}-s`, metricType: 'SAVES', quantity: order.saves, cost: 0, status: order.status, remains: order.status === 'COMPLETED' ? 0 : order.saves },
+      { id: `${order.id}-sh`, metricType: 'SHARES', quantity: order.shares, cost: 0, status: order.status, remains: order.status === 'COMPLETED' ? 0 : order.shares },
+      { id: `${order.id}-r`, metricType: 'REPOSTS', quantity: order.reposts, cost: 0, status: order.status, remains: order.status === 'COMPLETED' ? 0 : order.reposts },
+      { id: `${order.id}-c`, metricType: 'COMMENTS', quantity: order.comments, cost: 0, status: order.status, remains: order.status === 'COMPLETED' ? 0 : order.comments },
+      { id: `${order.id}-f`, metricType: 'FOLLOWERS', quantity: order.followers, cost: 0, status: order.status, remains: order.status === 'COMPLETED' ? 0 : order.followers },
+    ];
+    return list.filter((i) => i.quantity > 0);
+  };
+
+  // KPI Statistics
+  const stats = useMemo(() => {
+    const total = orders.length;
+    const completed = orders.filter((o) => o.status === 'COMPLETED').length;
+    const inProgress = orders.filter((o) => o.status === 'PROCESSING' || o.status === 'PENDING').length;
+    const totalDeliveredViews = orders
+      .filter((o) => o.status === 'COMPLETED')
+      .reduce((acc, o) => acc + (o.baseViews || 0), 0);
+
+    return {
+      total,
+      completed,
+      inProgress,
+      totalDeliveredViews,
+    };
+  }, [orders]);
+
+  // Filtered list
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const statusMatch =
+        statusFilter === 'ALL' ||
+        (statusFilter === 'ACTIVE'
+          ? order.status === 'PENDING' || order.status === 'PROCESSING'
+          : order.status.toUpperCase() === statusFilter);
+
+      const q = searchQuery.toLowerCase().trim();
+      const searchMatch =
+        !q ||
+        order.id.toLowerCase().includes(q) ||
+        (order.targetReelUrl && order.targetReelUrl.toLowerCase().includes(q));
+
+      return statusMatch && searchMatch;
+    });
+  }, [orders, statusFilter, searchQuery]);
+
+  // Overarching Order Status Badge
+  const getOrderStatusBadge = (status: string) => {
+    switch (status.toUpperCase()) {
+      case 'COMPLETED':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            COMPLETED
+          </span>
+        );
+      case 'PROCESSING':
+      case 'IN PROGRESS':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 font-mono">
+            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+            PROCESSING
+          </span>
+        );
+      case 'PARTIAL':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono">
+            PARTIAL
+          </span>
+        );
+      case 'PENDING':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30 font-mono">
+            <Clock className="w-3.5 h-3.5" />
+            QUEUED
+          </span>
+        );
+      case 'FAILED':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 font-mono">
+            <AlertCircle className="w-3.5 h-3.5" />
+            {status}
+          </span>
+        );
+    }
+  };
+
+  const getMetricIcon = (metricType: string) => {
+    switch (metricType.toUpperCase()) {
+      case 'LIKES':
+        return <Heart className="w-4 h-4 text-rose-400" />;
+      case 'SAVES':
+        return <Bookmark className="w-4 h-4 text-amber-400" />;
+      case 'SHARES':
+        return <Share2 className="w-4 h-4 text-sky-400" />;
+      case 'REPOSTS':
+        return <Repeat2 className="w-4 h-4 text-emerald-400" />;
+      case 'COMMENTS':
+        return <MessageCircle className="w-4 h-4 text-purple-400" />;
+      case 'FOLLOWERS':
+      case 'FOLLOWS':
+        return <UserPlus className="w-4 h-4 text-fuchsia-400" />;
+      case 'VIEWS':
+      default:
+        return <Eye className="w-4 h-4 text-blue-400" />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#07090E] text-slate-100 antialiased p-4 sm:p-6 lg:p-8 selection:bg-fuchsia-500/30 selection:text-white">
+      {/* Ambient background glows */}
+      <div className="fixed top-0 left-1/4 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-to-r from-blue-700/10 via-indigo-600/10 to-transparent blur-[140px] pointer-events-none rounded-full" />
+      <div className="fixed bottom-0 right-1/4 w-[500px] h-[300px] bg-gradient-to-l from-fuchsia-600/10 via-purple-600/10 to-transparent blur-[140px] pointer-events-none rounded-full" />
+
+      <div className="max-w-6xl mx-auto space-y-6 relative z-10">
+        {/* Top Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-3xl bg-[#0e131f]/90 border border-slate-800/80 shadow-2xl backdrop-blur-xl">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-fuchsia-600 text-white shadow-md shadow-indigo-600/30">
+                <Activity className="w-5 h-5" />
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+                Live Order Tracking Dashboard
+              </h1>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-400">
+              Track live delivery progress, start counts, remaining quantities, and completion states
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchOrders}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 border border-slate-700 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span>Refresh Status</span>
+            </button>
+
+            <Link
+              href="/order"
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white shadow-lg shadow-indigo-600/30 transition"
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Place New Order</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Client KPI Overview Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-lg">
+            <span className="text-[11px] text-slate-400 flex items-center justify-between">
+              Total Campaigns
+              <ShoppingBag className="w-3.5 h-3.5 text-blue-400" />
+            </span>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-white mt-1">
+              {stats.total.toLocaleString()}
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-lg">
+            <span className="text-[11px] text-slate-400 flex items-center justify-between">
+              Live Delivering
+              <Activity className="w-3.5 h-3.5 text-indigo-400" />
+            </span>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-indigo-400 mt-1">
+              {stats.inProgress.toLocaleString()}
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-lg">
+            <span className="text-[11px] text-slate-400 flex items-center justify-between">
+              Completed
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            </span>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-400 mt-1">
+              {stats.completed.toLocaleString()}
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-lg">
+            <span className="text-[11px] text-slate-400 flex items-center justify-between">
+              Delivered Views
+              <TrendingUp className="w-3.5 h-3.5 text-fuchsia-400" />
+            </span>
+            <div className="text-xl sm:text-2xl font-bold font-mono text-fuchsia-300 mt-1 truncate">
+              {stats.totalDeliveredViews.toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        {/* Filter and Search Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-md">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by Order ID or Reel URL..."
+              className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 transition"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <Filter className="w-3.5 h-3.5 text-slate-500 mr-1 shrink-0" />
+            {['ALL', 'ACTIVE', 'COMPLETED', 'PENDING'].map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                  statusFilter === status
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Orders Progress Tracking List */}
+        {loading && orders.length === 0 ? (
+          <div className="p-12 text-center rounded-3xl bg-[#0e131f]/90 border border-slate-800/80">
+            <RefreshCw className="w-8 h-8 animate-spin text-indigo-400 mx-auto mb-3" />
+            <p className="text-sm text-slate-300 font-medium">Loading your campaigns from database...</p>
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div className="p-12 text-center rounded-3xl bg-[#0e131f]/90 border border-slate-800/80 space-y-3">
+            <ShoppingBag className="w-10 h-10 text-slate-600 mx-auto" />
+            <h3 className="text-base font-bold text-white">No Orders Found</h3>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              You haven’t placed any orders matching this criteria yet. Configure a campaign on our interactive order form to start tracking.
+            </p>
+            <div className="pt-2">
+              <Link
+                href="/order"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition"
+              >
+                <span>Create First Order</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredOrders.map((order) => {
+              const subItems = getSubOrders(order);
+              const isExpanded = !!expandedOrders[order.id];
+
+              // Calculate overarching progress bar: ((TotalQuantity - TotalRemains) / TotalQuantity) * 100
+              const totalQuantity = subItems.reduce((acc, i) => acc + (i.quantity || 0), 0);
+              const totalRemains = subItems.reduce((acc, i) => {
+                if (order.status === 'COMPLETED' || i.status === 'Completed') return acc;
+                return acc + (i.remains !== null && i.remains !== undefined ? i.remains : i.quantity || 0);
+              }, 0);
+
+              const overallProgress =
+                order.status === 'COMPLETED'
+                  ? 100
+                  : totalQuantity > 0
+                  ? Math.min(100, Math.max(0, Math.round(((totalQuantity - totalRemains) / totalQuantity) * 100)))
+                  : 0;
+
+              const dateStr = new Date(order.createdAt).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+
+              return (
+                <div
+                  key={order.id}
+                  className="rounded-3xl bg-[#0e131f]/90 border border-slate-800/80 shadow-2xl backdrop-blur-xl overflow-hidden transition hover:border-slate-700/80"
+                >
+                  {/* Card Header & Overarching Summary */}
+                  <div className="p-5 sm:p-6 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 text-indigo-400">
+                          <Layers className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-white font-mono">
+                              #{order.id.slice(-8)}
+                            </span>
+                            {getOrderStatusBadge(order.status)}
+                          </div>
+                          <span className="text-[11px] text-slate-500 block mt-0.5">
+                            Created on {dateStr}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Target Reel Link */}
+                      {order.targetReelUrl ? (
+                        <a
+                          href={order.targetReelUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-blue-400 hover:text-blue-300 hover:border-slate-700 transition max-w-xs truncate"
+                          title={order.targetReelUrl}
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{order.targetReelUrl}</span>
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-500 italic">No Target Reel URL attached</span>
+                      )}
+                    </div>
+
+                    {/* Overall Progress Bar */}
+                    <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-300 flex items-center gap-2">
+                          <Activity className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Overall Campaign Delivery Progress</span>
+                        </span>
+                        <span className="font-mono font-bold text-emerald-400 text-sm">
+                          {overallProgress}% Delivered
+                        </span>
+                      </div>
+
+                      {/* The Progress Bar */}
+                      <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                        <div
+                          className="bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-400 h-full rounded-full transition-all duration-700 shadow-md shadow-emerald-500/20"
+                          style={{ width: `${overallProgress}%` }}
+                        />
+                      </div>
+
+                      <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 pt-0.5">
+                        <span>Base Views: {order.baseViews.toLocaleString()}</span>
+                        <span>
+                          {order.status === 'COMPLETED'
+                            ? 'All items delivered successfully'
+                            : `Estimated Remaining: ${totalRemains.toLocaleString()} metrics`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Expand/Collapse Toggle Button */}
+                    <div className="flex justify-between items-center pt-1">
+                      <span className="text-xs text-slate-400 font-mono">
+                        {subItems.length} Dispatched Sub-Metrics (Views, Likes, Saves...)
+                      </span>
+
+                      <button
+                        onClick={() => toggleExpand(order.id)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition"
+                      >
+                        <span>{isExpanded ? 'Hide Metric Breakdown' : 'View Live Breakdown & Remains'}</span>
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sub-Orders Breakdown Section */}
+                  {isExpanded && (
+                    <div className="p-5 sm:p-6 bg-slate-950/90 border-t border-slate-800/80 space-y-3">
+                      <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span>Live Metric Breakdown</span>
+                        <span className="text-[11px] text-slate-500 font-normal font-mono">
+                          Formula: ((Quantity - Remains) / Quantity) * 100
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {subItems.map((item, idx) => {
+                          const quantity = item.quantity || 0;
+                          const remains =
+                            order.status === 'COMPLETED' || item.status === 'Completed'
+                              ? 0
+                              : item.remains !== null && item.remains !== undefined
+                              ? item.remains
+                              : quantity;
+
+                          // User requested formula: ((Quantity - Remains) / Quantity) * 100
+                          const itemProgress =
+                            order.status === 'COMPLETED' || item.status === 'Completed'
+                              ? 100
+                              : quantity > 0
+                              ? Math.min(100, Math.max(0, Math.round(((quantity - remains) / quantity) * 100)))
+                              : 0;
+
+                          const delivered = Math.max(0, quantity - remains);
+
+                          return (
+                            <div
+                              key={item.id || idx}
+                              className="p-3.5 rounded-2xl bg-[#0e131f] border border-slate-800/90 space-y-2 hover:border-slate-700 transition"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  {getMetricIcon(item.metricType)}
+                                  <span className="font-bold text-xs text-white">
+                                    {item.metricType}
+                                  </span>
+                                  <span className="text-[11px] font-mono text-slate-400">
+                                    {quantity.toLocaleString()}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                      item.status === 'Completed' || itemProgress === 100
+                                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                        : item.status === 'In progress' || item.status === 'Processing'
+                                        ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                                        : item.status === 'Canceled'
+                                        ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                        : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+                                    }`}
+                                  >
+                                    {item.status || 'Pending'}
+                                  </span>
+
+                                  {item.providerOrderId && (
+                                    <span className="text-[10px] font-mono text-slate-500">
+                                      #{item.providerOrderId}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Live Metric Progress Bar */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+                                  <span>
+                                    Delivered: <strong className="text-slate-200">{delivered.toLocaleString()}</strong>
+                                  </span>
+                                  <span className="font-bold text-emerald-400">
+                                    {itemProgress}%
+                                  </span>
+                                </div>
+
+                                <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                                  <div
+                                    className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${itemProgress}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Start Count & Remains Numbers */}
+                              <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 pt-0.5 border-t border-slate-900">
+                                <span>
+                                  Start Count: {item.startCount !== null && item.startCount !== undefined ? item.startCount.toLocaleString() : '—'}
+                                </span>
+                                <span className="text-amber-400/90 font-medium">
+                                  Remains: {remains.toLocaleString()}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -45,7 +45,8 @@ async function executeCronSync() {
   }
 
   // Check Kill Switch
-  if (!settings.CRON_STATUS_SYNC_ACTIVE) {
+  const isCronActive = (settings as { CRON_STATUS_SYNC_ACTIVE?: boolean })?.CRON_STATUS_SYNC_ACTIVE ?? true;
+  if (!isCronActive) {
     return {
       status: 200,
       body: {

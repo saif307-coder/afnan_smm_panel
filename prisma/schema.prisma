@@ -101,7 +101,30 @@ model Order {
   provider              SmmProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
   providerResponsesJson String?      // Detailed JSON log of all external provider API calls & order IDs
   errorMessage          String?
+  items                 OrderItem[]
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
+}
+
+// ─── Phase 7: Sub-Orders / Metric Tracking Items ────────────────────────────
+// Tracks individual provider dispatches, live provider order IDs, start count, remains & status
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  metricType      String   // e.g. "VIEWS", "LIKES", "SAVES", "SHARES", "REPOSTS", "COMMENTS", "FOLLOWERS"
+  serviceId       String?
+  quantity        Int
+  cost            Float    @default(0)
+  providerOrderId String?  // External provider order ID returned upon dispatch
+  status          String   @default("PENDING") // Pending, Processing, In progress, Completed, Partial, Canceled, Failed, Skipped
+  startCount      Int?
+  remains         Int?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([providerOrderId])
 }
 

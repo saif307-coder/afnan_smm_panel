@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   Clock,
-  ExternalLink,
   ChevronDown,
   ChevronUp,
   Layers,
@@ -20,13 +19,28 @@ import {
   MessageCircle,
   UserPlus,
   Eye,
-  DollarSign,
   AlertCircle,
   Code2,
   Wallet,
   Activity,
   Loader2,
+  Zap,
 } from 'lucide-react';
+
+interface SubOrderItem {
+  id: string;
+  metricType: string;
+  serviceId?: string | null;
+  quantity: number;
+  cost: number;
+  providerOrderId?: string | null;
+  status: string;
+  startCount?: number | null;
+  remains?: number | null;
+  errorMessage?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 interface OrderItem {
   id: string;
@@ -43,6 +57,7 @@ interface OrderItem {
   providerId: string | null;
   providerResponsesJson: string | null;
   errorMessage: string | null;
+  items?: SubOrderItem[];
   createdAt: string;
   updatedAt: string;
   provider?: {
@@ -55,9 +70,15 @@ interface OrderItem {
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncingLive, setSyncingLive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    show: boolean;
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   // Live SMM Provider Balance state
   const [providerBalance, setProviderBalance] = useState<{
@@ -121,6 +142,38 @@ export default function AdminOrdersPage() {
     fetchLiveBalance();
   };
 
+  // Phase 7: Live Status Sync with SMM Provider API
+  const handleSyncLiveStatus = async () => {
+    setSyncingLive(true);
+    setToast(null);
+
+    try {
+      const res = await fetch('/api/cron/sync-orders', {
+        method: 'POST',
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setToast({
+          show: true,
+          type: 'success',
+          message: `Live Sync Complete: ${data.itemsUpdated ?? 0} sub-orders updated across ${data.ordersEvaluated ?? 0} orders (${data.durationMs ?? 0}ms).`,
+        });
+        await fetchOrders();
+      } else {
+        throw new Error(data.error || 'Failed to synchronize live order statuses');
+      }
+    } catch (err) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Live sync execution failed',
+      });
+    } finally {
+      setSyncingLive(false);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
     fetchLiveBalance();
@@ -176,6 +229,14 @@ export default function AdminOrdersPage() {
             COMPLETED
           </span>
         );
+      case 'PROCESSING':
+      case 'IN PROGRESS':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+            PROCESSING
+          </span>
+        );
       case 'PARTIAL':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono">
@@ -195,10 +256,62 @@ export default function AdminOrdersPage() {
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30 font-mono">
             <AlertCircle className="w-3.5 h-3.5" />
-            FAILED
+            {status.toUpperCase()}
           </span>
         );
     }
+  };
+
+  const getItemStatusBadge = (status: string) => {
+    const s = status.toLowerCase();
+    if (s.includes('complete')) {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+          Completed
+        </span>
+      );
+    }
+    if (s.includes('progress') || s.includes('process')) {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+          {s.includes('progress') ? 'In progress' : 'Processing'}
+        </span>
+      );
+    }
+    if (s.includes('cancel')) {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-500/15 text-rose-400 border border-rose-500/30">
+          Canceled
+        </span>
+      );
+    }
+    if (s.includes('partial')) {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/15 text-amber-400 border border-amber-500/30">
+          Partial
+        </span>
+      );
+    }
+    if (s.includes('skip')) {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-slate-800 text-slate-400 border border-slate-700">
+          Skipped
+        </span>
+      );
+    }
+    if (s.includes('fail')) {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-rose-500/15 text-rose-400 border border-rose-500/30">
+          Failed
+        </span>
+      );
+    }
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-blue-500/15 text-blue-400 border border-blue-500/30">
+        Pending
+      </span>
+    );
   };
 
   return (
@@ -215,7 +328,7 @@ export default function AdminOrdersPage() {
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-slate-400">
-            Real-time tracking of bundled Instagram Reel dispatches & provider logs
+            Real-time tracking of bundled Instagram Reel dispatches, sub-orders & provider status sync
           </p>
         </div>
 
@@ -232,6 +345,26 @@ export default function AdminOrdersPage() {
             </span>
           </div>
 
+          {/* Sync Live Status Button */}
+          <button
+            onClick={handleSyncLiveStatus}
+            disabled={syncingLive || loading}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white shadow-lg shadow-teal-600/20 transition disabled:opacity-50"
+            title="Poll SMM Provider API for live start counts, remains, and completion statuses"
+          >
+            {syncingLive ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Syncing Live Status...</span>
+              </>
+            ) : (
+              <>
+                <Activity className="w-3.5 h-3.5" />
+                <span>Sync Live Status</span>
+              </>
+            )}
+          </button>
+
           <button
             onClick={handleRefreshAll}
             disabled={loading || providerBalance.loading}
@@ -243,8 +376,34 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Toast Alert */}
+      {toast?.show && (
+        <div
+          className={`p-4 rounded-2xl border shadow-xl flex items-center justify-between gap-3 animate-in fade-in ${
+            toast.type === 'success'
+              ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+              : 'bg-rose-950/80 border-rose-500/50 text-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2.5 text-xs font-semibold">
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>{toast.message}</span>
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            className="text-xs opacity-70 hover:opacity-100 px-2 py-0.5 rounded bg-black/20"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Orders */}
         <div className="p-5 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-lg">
           <div className="flex items-center justify-between text-xs text-slate-400">
@@ -269,7 +428,7 @@ export default function AdminOrdersPage() {
           <div className="text-[11px] text-purple-400/80 mt-1">Combined Scale Volume</div>
         </div>
 
-        {/* Live Provider Balance (Accurate from API) */}
+        {/* Live Provider Balance */}
         <div className="p-5 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-lg relative overflow-hidden">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="flex items-center gap-1.5 font-medium">
@@ -328,7 +487,7 @@ export default function AdminOrdersPage() {
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           <Filter className="w-3.5 h-3.5 text-slate-500 mr-1 shrink-0" />
-          {['ALL', 'COMPLETED', 'PARTIAL', 'FAILED', 'PENDING'].map((status) => (
+          {['ALL', 'COMPLETED', 'PROCESSING', 'PARTIAL', 'FAILED', 'PENDING'].map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
@@ -355,6 +514,7 @@ export default function AdminOrdersPage() {
                 <th className="py-4 px-4">Base Views</th>
                 <th className="py-4 px-4">Total Cost</th>
                 <th className="py-4 px-4">Status</th>
+                <th className="py-4 px-4">Sub-Orders</th>
                 <th className="py-4 px-4">Date</th>
                 <th className="py-4 px-4 text-right">Actions</th>
               </tr>
@@ -362,7 +522,7 @@ export default function AdminOrdersPage() {
             <tbody className="divide-y divide-slate-800/60 font-mono">
               {loading && orders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400 font-sans">
+                  <td colSpan={8} className="text-center py-12 text-slate-400 font-sans">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <RefreshCw className="w-6 h-6 animate-spin text-indigo-400" />
                       <span>Loading orders from database...</span>
@@ -371,7 +531,7 @@ export default function AdminOrdersPage() {
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-slate-400 font-sans">
+                  <td colSpan={8} className="text-center py-12 text-slate-400 font-sans">
                     No orders found matching your filter criteria.
                   </td>
                 </tr>
@@ -380,24 +540,33 @@ export default function AdminOrdersPage() {
                   const isExpanded = expandedOrderId === order.id;
                   const dateStr = new Date(order.createdAt).toLocaleString();
 
-                  // Parse responses JSON if present
-                  let responses: Array<{
-                    metricType: string;
-                    serviceId?: string;
-                    quantity?: number;
-                    status: string;
-                    providerOrderId?: string | number;
-                    error?: string;
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    rawResponse?: any;
-                  }> = [];
-                  if (order.providerResponsesJson) {
+                  // Sub-order items: prefer relational items array, fallback to parsed responses JSON
+                  let subItems: SubOrderItem[] = order.items || [];
+                  if (subItems.length === 0 && order.providerResponsesJson) {
                     try {
-                      responses = JSON.parse(order.providerResponsesJson);
+                      const parsed = JSON.parse(order.providerResponsesJson);
+                      if (Array.isArray(parsed)) {
+                        subItems = parsed.map((p, idx) => ({
+                          id: `${order.id}-item-${idx}`,
+                          metricType: p.metricType || 'UNKNOWN',
+                          serviceId: p.serviceId,
+                          quantity: p.quantity || 0,
+                          cost: p.cost || 0,
+                          providerOrderId: p.providerOrderId ? String(p.providerOrderId) : null,
+                          status: p.externalStatus || (p.status === 'SUCCESS' ? 'Pending' : p.status || 'Failed'),
+                          startCount: p.startCount,
+                          remains: p.remains,
+                          errorMessage: p.error,
+                        }));
+                      }
                     } catch {
-                      responses = [];
+                      subItems = [];
                     }
                   }
+
+                  const activeProviderIds = subItems
+                    .filter((i) => i.providerOrderId)
+                    .map((i) => i.providerOrderId);
 
                   return (
                     <React.Fragment key={order.id}>
@@ -409,7 +578,7 @@ export default function AdminOrdersPage() {
                         <td className="py-3.5 px-4 font-bold text-slate-200">
                           #{order.id.slice(-8)}
                         </td>
-                        <td className="py-3.5 px-4 max-w-[220px]">
+                        <td className="py-3.5 px-4 max-w-[200px]">
                           {order.targetReelUrl ? (
                             <a
                               href={order.targetReelUrl}
@@ -433,6 +602,16 @@ export default function AdminOrdersPage() {
                           ${order.totalCost.toFixed(4)}
                         </td>
                         <td className="py-3.5 px-4">{getStatusBadge(order.status)}</td>
+                        <td className="py-3.5 px-4 font-sans">
+                          {activeProviderIds.length > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono text-indigo-300 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-800/50">
+                              <Zap className="w-3 h-3 text-amber-400" />
+                              {activeProviderIds.length} sub-orders
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 text-[11px]">No external IDs</span>
+                          )}
+                        </td>
                         <td className="py-3.5 px-4 text-slate-400 text-[11px] font-sans">
                           {dateStr}
                         </td>
@@ -441,7 +620,7 @@ export default function AdminOrdersPage() {
                             onClick={() => toggleExpand(order.id)}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-sans font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
                           >
-                            <span>{isExpanded ? 'Collapse' : 'Details'}</span>
+                            <span>{isExpanded ? 'Collapse' : 'Tracking'}</span>
                             {isExpanded ? (
                               <ChevronUp className="w-3.5 h-3.5" />
                             ) : (
@@ -454,10 +633,10 @@ export default function AdminOrdersPage() {
                       {/* Expanded Details Row */}
                       {isExpanded && (
                         <tr className="bg-slate-950/80 border-y border-slate-800">
-                          <td colSpan={7} className="p-4 sm:p-6 space-y-4 font-sans">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              {/* Calculated Quantities Breakdown */}
-                              <div className="p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3">
+                          <td colSpan={8} className="p-4 sm:p-6 space-y-4 font-sans">
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                              {/* Left: Calculated Quantities Breakdown (5 Cols) */}
+                              <div className="lg:col-span-5 p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3">
                                 <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
                                   <span className="font-bold text-white flex items-center gap-2">
                                     <Layers className="w-4 h-4 text-indigo-400" />
@@ -525,15 +704,15 @@ export default function AdminOrdersPage() {
                                 </div>
                               </div>
 
-                              {/* Provider Responses & Debug Logs */}
-                              <div className="p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3">
+                              {/* Right: Live Sub-Order Tracking Items (7 Cols) */}
+                              <div className="lg:col-span-7 p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3">
                                 <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
                                   <span className="font-bold text-white flex items-center gap-2">
                                     <Code2 className="w-4 h-4 text-emerald-400" />
-                                    <span>Provider API Dispatch Log</span>
+                                    <span>Live Sub-Order Delivery Tracking (Phase 7)</span>
                                   </span>
                                   <span className="text-slate-400 text-[11px]">
-                                    {order.provider?.name || 'SMM Pro Provider'}
+                                    Provider: {order.provider?.name || 'SMM Provider'}
                                   </span>
                                 </div>
 
@@ -546,58 +725,90 @@ export default function AdminOrdersPage() {
                                   </div>
                                 )}
 
-                                {responses.length > 0 ? (
-                                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                                    {responses.map((resp, idx) => (
-                                      <div
-                                        key={idx}
-                                        className="flex items-center justify-between p-2 rounded-lg bg-slate-950 border border-slate-800/80 text-xs font-mono"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <span
-                                            className={`w-2 h-2 rounded-full ${
-                                              resp.status === 'SUCCESS'
-                                                ? 'bg-emerald-400'
-                                                : resp.status === 'SKIPPED'
-                                                ? 'bg-amber-400'
-                                                : 'bg-rose-400'
-                                            }`}
-                                          />
-                                          <span className="font-bold text-white">
-                                            {resp.metricType}
-                                          </span>
-                                          <span className="text-slate-500 text-[10px]">
-                                            (Svc #{resp.serviceId})
-                                          </span>
-                                        </div>
+                                {subItems.length > 0 ? (
+                                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                    {subItems.map((item, idx) => {
+                                      const quantity = item.quantity || 0;
+                                      const remains = item.remains !== undefined && item.remains !== null ? item.remains : quantity;
+                                      const progressPct =
+                                        quantity > 0
+                                          ? Math.min(100, Math.max(0, Math.round(((quantity - remains) / quantity) * 100)))
+                                          : 100;
 
-                                        <div>
-                                          {resp.status === 'SUCCESS' ? (
-                                            <span className="text-emerald-400 font-bold">
-                                              Order #{resp.providerOrderId}
-                                            </span>
-                                          ) : resp.status === 'SKIPPED' ? (
-                                            <span
-                                              className="text-amber-400/90 text-[10px] font-medium truncate max-w-[180px] block font-sans"
-                                              title={resp.error}
-                                            >
-                                              {resp.error || 'Skipped (Below Min)'}
-                                            </span>
-                                          ) : (
-                                            <span
-                                              className="text-rose-400 text-[10px] truncate max-w-[180px] block"
-                                              title={resp.error}
-                                            >
-                                              {resp.error || 'Failed'}
-                                            </span>
-                                          )}
+                                      return (
+                                        <div
+                                          key={item.id || idx}
+                                          className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 text-xs space-y-2"
+                                        >
+                                          <div className="flex items-center justify-between font-mono">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-bold text-white text-xs">
+                                                {item.metricType}
+                                              </span>
+                                              <span className="text-slate-500 text-[11px]">
+                                                {quantity.toLocaleString()} qty
+                                              </span>
+                                              {item.serviceId && (
+                                                <span className="text-[10px] text-slate-500">
+                                                  (Svc #{item.serviceId})
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                              {getItemStatusBadge(item.status)}
+                                              {item.providerOrderId ? (
+                                                <span className="text-emerald-400 font-bold text-[11px] bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                                  Order #{item.providerOrderId}
+                                                </span>
+                                              ) : (
+                                                <span className="text-slate-500 text-[10px]">No Order ID</span>
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          {/* Live Tracking Numbers: Start Count & Remains */}
+                                          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
+                                            <div>
+                                              <span className="text-slate-500">Start Count: </span>
+                                              <span className="font-bold text-slate-200">
+                                                {item.startCount !== null && item.startCount !== undefined
+                                                  ? item.startCount.toLocaleString()
+                                                  : '—'}
+                                              </span>
+                                            </div>
+
+                                            <div>
+                                              <span className="text-slate-500">Remains: </span>
+                                              <span className="font-bold text-amber-300">
+                                                {item.remains !== null && item.remains !== undefined
+                                                  ? `${item.remains.toLocaleString()} / ${quantity.toLocaleString()}`
+                                                  : '—'}
+                                              </span>
+                                            </div>
+
+                                            <div>
+                                              <span className="text-slate-500">Progress: </span>
+                                              <span className="font-bold text-emerald-400">
+                                                {progressPct}%
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          {/* Mini Progress Bar */}
+                                          <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                                            <div
+                                              className="bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-500"
+                                              style={{ width: `${progressPct}%` }}
+                                            />
+                                          </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 ) : (
-                                  <div className="text-xs text-slate-500 italic p-3 text-center">
-                                    No itemized provider response records attached.
+                                  <div className="text-xs text-slate-500 italic p-4 text-center">
+                                    No itemized provider tracking records attached to this order.
                                   </div>
                                 )}
                               </div>

@@ -24,6 +24,9 @@ export async function GET(req: NextRequest) {
         provider: {
           select: { id: true, name: true, apiUrl: true },
         },
+        items: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 
@@ -125,6 +128,7 @@ export async function POST(req: NextRequest) {
         provider: {
           select: { id: true, name: true },
         },
+        items: true,
       },
     });
 
