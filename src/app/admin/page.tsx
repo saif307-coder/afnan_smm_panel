@@ -775,21 +775,21 @@ export default function AdminOrdersPage() {
                           {dateStr}
                         </td>
 
-                        {/* UPGRADED ACTIONS COLUMN */}
+                        {/* UPGRADED ACTIONS COLUMN: Complete CRUD Controls */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center justify-center gap-1.5">
-                            {/* 1. Edit (Blue): Opens edit target URL modal */}
+                            {/* 1. Edit (Pencil icon, color: blue): Opens edit target URL modal */}
                             <button
                               type="button"
                               onClick={() => handleOpenEdit(order)}
                               disabled={isRowLoading}
-                              title="Edit Target Reel URL"
+                              title="Edit Target URL"
                               className="p-1.5 rounded-lg bg-blue-600/15 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 transition active:scale-95 disabled:opacity-40"
                             >
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
 
-                            {/* 2. Stop (Orange): Sets status to CANCELED */}
+                            {/* 2. Stop (Ban icon, color: orange): Sets status to CANCELED */}
                             <button
                               type="button"
                               onClick={() => handleStopOrder(order.id)}
@@ -808,7 +808,7 @@ export default function AdminOrdersPage() {
                               )}
                             </button>
 
-                            {/* 3. Delete (Red): Confirmation dialog & delete */}
+                            {/* 3. Delete (Trash icon, color: red): Confirmation dialog & delete */}
                             <button
                               type="button"
                               onClick={() => handleDeleteOrder(order)}
@@ -819,21 +819,21 @@ export default function AdminOrdersPage() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
 
-                            {/* 4. Tracking / Details toggle */}
+                            {/* 4. Details (ChevronDown icon, color: gray) for expanding sub-orders */}
                             <button
                               type="button"
                               onClick={() => toggleExpand(order.id)}
-                              title={isExpanded ? 'Collapse tracking details' : 'Expand tracking details'}
+                              title={isExpanded ? 'Collapse sub-orders' : 'Details (Expand sub-orders)'}
                               className={`p-1.5 rounded-lg border transition active:scale-95 ${
                                 isExpanded
-                                  ? 'bg-indigo-600 text-white border-indigo-500'
-                                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'
+                                  ? 'bg-slate-700 text-white border-slate-600'
+                                  : 'bg-slate-800/80 text-gray-400 hover:text-white hover:bg-slate-700 border-slate-700'
                               }`}
                             >
                               {isExpanded ? (
-                                <ChevronUp className="w-3.5 h-3.5" />
+                                <ChevronUp className="w-3.5 h-3.5 text-gray-300" />
                               ) : (
-                                <ChevronDown className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
                               )}
                             </button>
                           </div>
