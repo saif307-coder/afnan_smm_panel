@@ -2,11 +2,22 @@
  * SMM Provider Dispatcher Service (Phase 4 & Auto-Healing)
  * 
  * Handles bundle splitting, external SMM API communication, error handling,
- * auto-healing fallback for invalid service IDs, and order state reconciliation with Prisma.
+ * sanitization of service IDs, auto-healing fallback for invalid service IDs,
+ * and order state reconciliation with Prisma.
  */
 
 import { prisma } from '@/lib/prisma';
 import { ensureOfficialProvider } from '../../prisma/seedProvider';
+
+export const DEFAULT_DISPATCHER_MAPPINGS: Record<string, { serviceId: string; costPer1000: number; minQuantity: number }> = {
+  VIEWS: { serviceId: '12897', costPer1000: 0.0004, minQuantity: 10 },
+  LIKES: { serviceId: '14749', costPer1000: 0.0090, minQuantity: 10 },
+  COMMENTS: { serviceId: '16946', costPer1000: 0.3498, minQuantity: 10 },
+  SAVES: { serviceId: '9685', costPer1000: 0.0029, minQuantity: 10 },
+  SHARES: { serviceId: '19608', costPer1000: 0.0010, minQuantity: 10 },
+  REPOSTS: { serviceId: '14549', costPer1000: 0.2938, minQuantity: 1 },
+  FOLLOWERS: { serviceId: '18302', costPer1000: 0.1814, minQuantity: 10 },
+};
 
 export interface DispatchItemResult {
   metricType: string;
@@ -113,19 +124,30 @@ export function matchBestActiveService(
 ): ProviderServiceItem | null {
   const normMetric = metricType.toUpperCase();
   const igServices = services.filter((s) => {
-    const text = `${s.name} ${s.category || ''}`.toLowerCase();
+    const text = `${s.name || ''} ${s.category || ''}`.toLowerCase();
     return text.includes('instagram') || text.includes('reel') || text.includes('post');
   });
 
-  const filterByKeywords = (keywords: string[], exclude: string[] = []) => {
+  const filterByKeywords = (nameKeywords: string[], exclude: string[] = [], preferLowMin = true) => {
     return igServices
       .filter((s) => {
-        const text = `${s.name} ${s.category || ''}`.toLowerCase();
-        const matches = keywords.some((k) => text.includes(k.toLowerCase()));
-        const isExcluded = exclude.some((e) => text.includes(e.toLowerCase()));
+        const name = (s.name || '').toLowerCase();
+        const matches = nameKeywords.some((k) => name.includes(k.toLowerCase()));
+        const isExcluded = exclude.some((e) => name.includes(e.toLowerCase()));
         return matches && !isExcluded;
       })
-      .sort((a, b) => (parseFloat(String(a.rate)) || 0) - (parseFloat(String(b.rate)) || 0));
+      .sort((a, b) => {
+        const rateA = parseFloat(String(a.rate)) || 0;
+        const rateB = parseFloat(String(b.rate)) || 0;
+        const minA = parseInt(String(a.min || 0), 10) || 0;
+        const minB = parseInt(String(b.min || 0), 10) || 0;
+        if (preferLowMin) {
+          const lowA = minA <= 10 ? 0 : 1;
+          const lowB = minB <= 10 ? 0 : 1;
+          if (lowA !== lowB) return lowA - lowB;
+        }
+        return rateA - rateB;
+      });
   };
 
   let candidates: ProviderServiceItem[] = [];
@@ -137,21 +159,23 @@ export function matchBestActiveService(
     case 'LIKES':
       candidates = filterByKeywords(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save']);
       break;
+    case 'COMMENTS':
+      candidates = filterByKeywords(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian']);
+      break;
     case 'SAVES':
       candidates = filterByKeywords(['saves', 'save'], ['story', 'auto']);
       break;
     case 'SHARES':
       candidates = filterByKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
       break;
-    case 'REPOSTS':
-      candidates = filterByKeywords(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter']);
+    case 'REPOSTS': {
+      const reposts = filterByKeywords(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter']);
+      candidates = reposts.length > 0 ? reposts : filterByKeywords(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
       break;
-    case 'COMMENTS':
-      candidates = filterByKeywords(['comment', 'comments'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick']);
-      break;
+    }
     case 'FOLLOWERS':
     case 'FOLLOWS':
-      candidates = filterByKeywords(['follower', 'followers'], ['story', 'auto']);
+      candidates = filterByKeywords(['followers', 'follower'], ['story', 'auto']);
       break;
     default:
       candidates = [];
@@ -188,7 +212,7 @@ export async function autoHealAndRetryService(
     return { success: false, error: `No active replacement service found for metric "${item.metricType}"` };
   }
 
-  const newServiceId = String(matched.service);
+  const cleanNewServiceId = String(matched.service).replace(/[^0-9]/g, '').trim();
   const newRate = parseFloat(String(matched.rate)) || 0;
   const newMin = parseInt(String(matched.min)) || 0;
 
@@ -202,7 +226,7 @@ export async function autoHealAndRetryService(
         },
       },
       update: {
-        serviceId: newServiceId,
+        serviceId: cleanNewServiceId,
         costPer1000: newRate,
         minQuantity: newMin,
         isActive: true,
@@ -210,18 +234,18 @@ export async function autoHealAndRetryService(
       create: {
         providerId: provider.id,
         metricType: item.metricType.toUpperCase(),
-        serviceId: newServiceId,
+        serviceId: cleanNewServiceId,
         costPer1000: newRate,
         minQuantity: newMin,
         isActive: true,
       },
     });
-    console.log(`[SMM Dispatcher Auto-Heal] Updated DB ServiceMapping: ${item.metricType} -> Service #${newServiceId} ($${newRate}/1k, min: ${newMin})`);
+    console.log(`[SMM Dispatcher Auto-Heal] Updated DB ServiceMapping: ${item.metricType} -> Service #${cleanNewServiceId} ($${newRate}/1k, min: ${newMin})`);
   } catch (dbErr) {
     console.error(`[SMM Dispatcher Auto-Heal] Failed to persist healed mapping in DB:`, dbErr);
   }
 
-  const healedMapping = { serviceId: newServiceId, costPer1000: newRate, minQuantity: newMin };
+  const healedMapping = { serviceId: cleanNewServiceId, costPer1000: newRate, minQuantity: newMin };
 
   if (newMin > 0 && item.quantity < newMin) {
     return {
@@ -233,12 +257,12 @@ export async function autoHealAndRetryService(
 
   const estimatedCost = (item.quantity / 1000) * newRate;
 
-  // Immediately retry dispatching with healed Service ID
+  // Immediately retry dispatching with sanitized Service ID
   try {
     const params = new URLSearchParams({
       key: provider.apiKey,
       action: 'add',
-      service: newServiceId,
+      service: String(Number(cleanNewServiceId) || cleanNewServiceId),
       link: targetLink,
       quantity: item.quantity.toString(),
     });
@@ -261,7 +285,7 @@ export async function autoHealAndRetryService(
     }
 
     if (json.order !== undefined && json.order !== null) {
-      console.log(`[SMM Dispatcher Auto-Heal] Successfully dispatched ${item.metricType} with new Service #${newServiceId}! Order #${json.order}`);
+      console.log(`[SMM Dispatcher Auto-Heal] Successfully dispatched ${item.metricType} with new Service #${cleanNewServiceId}! Order #${json.order}`);
       return {
         success: true,
         healedMapping,
@@ -320,11 +344,12 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     throw new Error('No active SMM Provider configured');
   }
 
-  // Map metricType -> mapping
+  // Map metricType -> mapping (with sanitized numeric IDs)
   const mappingMap = new Map<string, { serviceId: string; costPer1000: number; minQuantity: number }>();
   for (const m of provider.mappings) {
+    const cleanId = String(m.serviceId).replace(/[^0-9]/g, '').trim();
     mappingMap.set(m.metricType.toUpperCase(), {
-      serviceId: m.serviceId,
+      serviceId: cleanId,
       costPer1000: m.costPer1000,
       minQuantity: (m as { minQuantity?: number }).minQuantity ?? 0,
     });
@@ -356,8 +381,15 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
 
     let mapping = mappingMap.get(item.metricType) || (item.metricType === 'FOLLOWERS' ? mappingMap.get('FOLLOWS') : undefined);
     
-    // If no mapping exists yet, attempt auto-healing right away
-    if (!mapping) {
+    // Fallback to static defaults if not mapped
+    if (!mapping && DEFAULT_DISPATCHER_MAPPINGS[item.metricType]) {
+      mapping = DEFAULT_DISPATCHER_MAPPINGS[item.metricType];
+    }
+
+    const cleanServiceId = mapping ? String(mapping.serviceId).replace(/[^0-9]/g, '').trim() : '';
+
+    // If no mapping exists yet or serviceId is blank, attempt auto-healing right away
+    if (!mapping || !cleanServiceId) {
       const healed = await autoHealAndRetryService(provider, item, targetLink);
       if (healed.success && healed.orderId) {
         dispatchResults.push({
@@ -399,7 +431,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
       console.log(`[SMM Dispatcher] Skipped ${item.metricType}: calculated ${item.quantity} is below minimum requirement (${mapping.minQuantity})`);
       dispatchResults.push({
         metricType: item.metricType,
-        serviceId: mapping.serviceId,
+        serviceId: cleanServiceId,
         quantity: item.quantity,
         cost: 0,
         status: 'SKIPPED',
@@ -411,11 +443,12 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     const estimatedCost = (item.quantity / 1000) * mapping.costPer1000;
 
     try {
-      // Build form-urlencoded payload for standard SMM API
+      // Build form-urlencoded payload for standard SMM API (service sanitized as clean integer/numeric string)
+      const sanitizedService = String(Number(cleanServiceId) || cleanServiceId);
       const params = new URLSearchParams({
         key: provider.apiKey,
         action: 'add',
-        service: mapping.serviceId,
+        service: sanitizedService,
         link: targetLink,
         quantity: item.quantity.toString(),
       });
@@ -443,7 +476,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
         // Success
         dispatchResults.push({
           metricType: item.metricType,
-          serviceId: mapping.serviceId,
+          serviceId: cleanServiceId,
           quantity: item.quantity,
           cost: estimatedCost,
           status: 'SUCCESS',
@@ -458,12 +491,12 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
         const isInvalidService = /incorrect service id|invalid service/i.test(String(errorMsg));
 
         if (isInvalidService) {
-          console.warn(`[SMM Dispatcher] Detected invalid service ID "${mapping.serviceId}" for ${item.metricType}. Triggering auto-heal...`);
+          console.warn(`[SMM Dispatcher] Detected invalid service ID "${cleanServiceId}" for ${item.metricType}. Triggering auto-heal...`);
           const healed = await autoHealAndRetryService(provider, item, targetLink);
           if (healed.success && healed.orderId) {
             dispatchResults.push({
               metricType: item.metricType,
-              serviceId: healed.healedMapping?.serviceId || mapping.serviceId,
+              serviceId: healed.healedMapping?.serviceId || cleanServiceId,
               quantity: item.quantity,
               cost: healed.cost || estimatedCost,
               status: 'SUCCESS',
@@ -476,7 +509,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
           } else if (healed.error === 'Skipped (Below Min)') {
             dispatchResults.push({
               metricType: item.metricType,
-              serviceId: healed.healedMapping?.serviceId || mapping.serviceId,
+              serviceId: healed.healedMapping?.serviceId || cleanServiceId,
               quantity: item.quantity,
               cost: 0,
               status: 'SKIPPED',
@@ -486,7 +519,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
           } else {
             dispatchResults.push({
               metricType: item.metricType,
-              serviceId: healed.healedMapping?.serviceId || mapping.serviceId,
+              serviceId: healed.healedMapping?.serviceId || cleanServiceId,
               quantity: item.quantity,
               cost: 0,
               status: 'FAILED',
@@ -499,7 +532,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
           // Provider returned another error (e.g. Insufficient balance)
           dispatchResults.push({
             metricType: item.metricType,
-            serviceId: mapping.serviceId,
+            serviceId: cleanServiceId,
             quantity: item.quantity,
             cost: 0,
             status: 'FAILED',
@@ -519,7 +552,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
         if (healed.success && healed.orderId) {
           dispatchResults.push({
             metricType: item.metricType,
-            serviceId: healed.healedMapping?.serviceId || mapping.serviceId,
+            serviceId: healed.healedMapping?.serviceId || cleanServiceId,
             quantity: item.quantity,
             cost: healed.cost || estimatedCost,
             status: 'SUCCESS',
@@ -534,7 +567,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
 
       dispatchResults.push({
         metricType: item.metricType,
-        serviceId: mapping.serviceId,
+        serviceId: cleanServiceId,
         quantity: item.quantity,
         cost: 0,
         status: 'FAILED',
@@ -596,7 +629,7 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
         return {
           orderId: order.id,
           metricType: d.metricType,
-          serviceId: d.serviceId ? String(d.serviceId) : null,
+          serviceId: d.serviceId ? String(d.serviceId).replace(/[^0-9]/g, '').trim() : null,
           quantity: d.quantity,
           cost: d.cost,
           providerOrderId: d.providerOrderId !== undefined && d.providerOrderId !== null ? String(d.providerOrderId) : null,

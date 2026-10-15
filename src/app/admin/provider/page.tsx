@@ -117,6 +117,7 @@ export default function AdminProviderPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [copiedServiceId, setCopiedServiceId] = useState<string | null>(null);
   const [servicesError, setServicesError] = useState<string | null>(null);
+  const [autoMapping, setAutoMapping] = useState(false);
   const itemsPerPage = 25;
 
   // Creation form state for initial setup or empty database
@@ -433,8 +434,9 @@ export default function AdminProviderPage() {
     }
   };
 
-  const handleApplyToMetric = (service: ProviderService, metricType: string) => {
-    const sId = String(service.service);
+  const handleApplyToMetric = async (service: ProviderService, metricType: string) => {
+    if (!provider) return;
+    const cleanId = String(service.service).replace(/[^0-9]/g, '').trim();
     const rateNum =
       typeof service.rate === 'number'
         ? service.rate
@@ -444,26 +446,198 @@ export default function AdminProviderPage() {
         ? service.min
         : parseInt(String(service.min || 0), 10) || 0;
 
+    // Optimistically update local state
     setMappings((prev) => ({
       ...prev,
       [metricType]: {
         ...(prev[metricType] || { isActive: true }),
-        serviceId: sId,
+        serviceId: cleanId,
         costPer1000: rateNum,
         minQuantity: minNum,
         isActive: true,
       },
     }));
 
-    setToast({
-      show: true,
-      type: 'success',
-      message: `Applied ${metricType} -> ID #${sId} ($${rateNum}/1k, Min: ${minNum}). Click 'Save' in Section B to store in database.`,
-    });
+    setSavingMapping(metricType);
+    setToast(null);
 
-    const el = document.getElementById('section-mappings');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
+    try {
+      const res = await fetch('/api/admin/mappings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          providerId: provider.id,
+          metricType,
+          serviceId: cleanId,
+          costPer1000: rateNum,
+          minQuantity: minNum,
+          isActive: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save mapping to database');
+      }
+
+      setToast({
+        show: true,
+        type: 'success',
+        message: `✓ ${metricType} immediately saved & mapped to Service #${cleanId} ($${rateNum.toFixed(4)}/1k, Min: ${minNum}) in DB!`,
+      });
+
+      // Refresh mappings from server to ensure complete sync
+      const mapRes = await fetch(`/api/admin/mappings?providerId=${provider.id}`);
+      const mapData = await mapRes.json();
+      if (mapData.success && Array.isArray(mapData.data)) {
+        const newMapState: Record<string, { serviceId: string; costPer1000: number; minQuantity: number; isActive: boolean }> = {};
+        for (const item of mapData.data) {
+          newMapState[item.metricType] = {
+            serviceId: String(item.serviceId).replace(/[^0-9]/g, '').trim(),
+            costPer1000: item.costPer1000,
+            minQuantity: item.minQuantity ?? 0,
+            isActive: item.isActive,
+          };
+        }
+        setMappings((prev) => ({ ...prev, ...newMapState }));
+      }
+    } catch (err) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to save mapping',
+      });
+    } finally {
+      setSavingMapping(null);
+    }
+  };
+
+  const handleAutoMapInstagramServices = async () => {
+    if (!provider) return;
+    setAutoMapping(true);
+    setToast(null);
+
+    try {
+      let catalog = services;
+      if (!catalog || catalog.length === 0) {
+        const url = `/api/admin/provider-services?providerId=${provider.id}&refresh=true`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!res.ok || !data.success || !Array.isArray(data.data)) {
+          throw new Error(data.error || 'Failed to download services catalog from provider');
+        }
+        catalog = data.data;
+        setServices(data.data);
+        setServicesFetched(true);
+      }
+
+      const igServices = catalog.filter((s) => {
+        const text = `${s.name || ''} ${s.category || ''}`.toLowerCase();
+        return text.includes('instagram') || text.includes('reel') || text.includes('post');
+      });
+
+      const findBest = (nameKeywords: string[], exclude: string[] = []) => {
+        return igServices
+          .filter((s) => {
+            const name = (s.name || '').toLowerCase();
+            const matches = nameKeywords.some((k) => name.includes(k.toLowerCase()));
+            const isExcluded = exclude.some((e) => name.includes(e.toLowerCase()));
+            return matches && !isExcluded;
+          })
+          .sort((a, b) => {
+            const rateA = parseFloat(String(a.rate)) || 0;
+            const rateB = parseFloat(String(b.rate)) || 0;
+            const minA = parseInt(String(a.min || 0), 10) || 0;
+            const minB = parseInt(String(b.min || 0), 10) || 0;
+            const lowA = minA <= 10 ? 0 : 1;
+            const lowB = minB <= 10 ? 0 : 1;
+            if (lowA !== lowB) return lowA - lowB;
+            return rateA - rateB;
+          });
+      };
+
+      const viewsCandidates = findBest(['views', 'view'], ['story', 'live', 'igtv', 'like', 'save', 'comment', 'auto']);
+      const likesCandidates = findBest(['likes', 'like'], ['comment', 'story', 'live', 'auto', 'view', 'save']);
+      const commentsCandidates = findBest(['comments', 'comment'], ['like', 'story', 'auto', 'custom', 'verified', 'blue tick', 'indian']);
+      const savesCandidates = findBest(['saves', 'save'], ['story', 'auto']);
+      const sharesCandidates = findBest(['shares', 'share'], ['story', 'auto', 'facebook', 'tiktok']);
+      const repostsCandidates = findBest(['repost', 'reposts'], ['story', 'auto', 'tiktok', 'twitter']);
+      const followersCandidates = findBest(['followers', 'follower'], ['story', 'auto']);
+
+      const repostSelected = repostsCandidates[0] || sharesCandidates[0];
+
+      const targets = [
+        { metric: 'VIEWS', item: viewsCandidates[0] },
+        { metric: 'LIKES', item: likesCandidates[0] },
+        { metric: 'COMMENTS', item: commentsCandidates[0] },
+        { metric: 'SAVES', item: savesCandidates[0] },
+        { metric: 'SHARES', item: sharesCandidates[0] },
+        { metric: 'REPOSTS', item: repostSelected },
+        { metric: 'FOLLOWERS', item: followersCandidates[0] },
+      ];
+
+      const savedSummary: string[] = [];
+      const updatedMapState = { ...mappings };
+
+      for (const t of targets) {
+        if (!t.item) continue;
+        const cleanId = String(t.item.service).replace(/[^0-9]/g, '').trim();
+        const rate = parseFloat(String(t.item.rate)) || 0;
+        const min = parseInt(String(t.item.min || 0), 10) || 0;
+
+        await fetch('/api/admin/mappings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            providerId: provider.id,
+            metricType: t.metric,
+            serviceId: cleanId,
+            costPer1000: rate,
+            minQuantity: min,
+            isActive: true,
+          }),
+        });
+
+        updatedMapState[t.metric] = {
+          serviceId: cleanId,
+          costPer1000: rate,
+          minQuantity: min,
+          isActive: true,
+        };
+        savedSummary.push(`${t.metric}: #${cleanId}`);
+      }
+
+      setMappings(updatedMapState);
+
+      // Refresh mappings from server
+      const mapRes = await fetch(`/api/admin/mappings?providerId=${provider.id}`);
+      const mapData = await mapRes.json();
+      if (mapData.success && Array.isArray(mapData.data)) {
+        const freshMapState: Record<string, { serviceId: string; costPer1000: number; minQuantity: number; isActive: boolean }> = {};
+        for (const item of mapData.data) {
+          freshMapState[item.metricType] = {
+            serviceId: String(item.serviceId).replace(/[^0-9]/g, '').trim(),
+            costPer1000: item.costPer1000,
+            minQuantity: item.minQuantity ?? 0,
+            isActive: item.isActive,
+          };
+        }
+        setMappings((prev) => ({ ...prev, ...freshMapState }));
+      }
+
+      setToast({
+        show: true,
+        type: 'success',
+        message: `⚡ Auto-Mapped All Instagram Services directly to database!\n${savedSummary.join(' | ')}`,
+      });
+    } catch (err) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Auto-mapping failed',
+      });
+    } finally {
+      setAutoMapping(false);
     }
   };
 
@@ -524,24 +698,46 @@ export default function AdminProviderPage() {
           </p>
         </div>
 
-        {testResult && (
-          <div
-            className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-mono font-bold border ${
-              testResult.success
-                ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
-                : 'bg-rose-950/80 border-rose-500/50 text-rose-300'
-            }`}
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={handleAutoMapInstagramServices}
+            disabled={autoMapping || loading || !provider}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white shadow-lg shadow-indigo-500/25 active:scale-95 transition disabled:opacity-50"
+            title="Automatically query provider, pick the best/cheapest Instagram Reel services, and save all mappings to PostgreSQL"
           >
-            <Activity className="w-4 h-4 shrink-0" />
-            {testResult.success ? (
-              <span>Balance: ${testResult.balance} {testResult.currency}</span>
+            {autoMapping ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Auto-Mapping Services...</span>
+              </>
             ) : (
-              <span className="truncate max-w-[200px]" title={testResult.error}>
-                {testResult.error}
-              </span>
+              <>
+                <Zap className="w-3.5 h-3.5 text-amber-300" />
+                <span>⚡ Auto-Map Instagram Services</span>
+              </>
             )}
-          </div>
-        )}
+          </button>
+
+          {testResult && (
+            <div
+              className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-mono font-bold border ${
+                testResult.success
+                  ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                  : 'bg-rose-950/80 border-rose-500/50 text-rose-300'
+              }`}
+            >
+              <Activity className="w-4 h-4 shrink-0" />
+              {testResult.success ? (
+                <span>Balance: ${testResult.balance} {testResult.currency}</span>
+              ) : (
+                <span className="truncate max-w-[200px]" title={testResult.error}>
+                  {testResult.error}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Toast Alert */}
@@ -962,15 +1158,36 @@ export default function AdminProviderPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => fetchLiveServices(true)}
-            disabled={loadingServices || !provider}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-600/20 active:scale-95 transition disabled:opacity-50 w-fit"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingServices ? 'animate-spin' : ''}`} />
-            <span>{servicesFetched ? 'Refresh Provider Services' : 'Fetch Live Services from Provider'}</span>
-          </button>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              type="button"
+              onClick={handleAutoMapInstagramServices}
+              disabled={autoMapping || loading || !provider}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white shadow-md active:scale-95 transition disabled:opacity-50"
+            >
+              {autoMapping ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Auto-Mapping...</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-3.5 h-3.5 text-amber-300" />
+                  <span>⚡ Auto-Map Instagram Services</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fetchLiveServices(true)}
+              disabled={loadingServices || !provider}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white shadow-md active:scale-95 transition disabled:opacity-50 w-fit border border-slate-700"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingServices ? 'animate-spin' : ''}`} />
+              <span>{servicesFetched ? 'Refresh Provider Services' : 'Fetch Live Services from Provider'}</span>
+            </button>
+          </div>
         </div>
 
         {/* State: Not fetched yet */}

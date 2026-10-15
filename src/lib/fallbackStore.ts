@@ -1,5 +1,15 @@
 import { calculateReelMetrics, ReelMetricsResult } from './metricsEngine';
 
+export const DEFAULT_SERVICE_MAPPINGS = [
+  { metricType: 'VIEWS', serviceId: '12897', costPer1000: 0.0004, minQuantity: 10 },
+  { metricType: 'LIKES', serviceId: '14749', costPer1000: 0.0090, minQuantity: 10 },
+  { metricType: 'COMMENTS', serviceId: '16946', costPer1000: 0.3498, minQuantity: 10 },
+  { metricType: 'SAVES', serviceId: '9685', costPer1000: 0.0029, minQuantity: 10 },
+  { metricType: 'SHARES', serviceId: '19608', costPer1000: 0.0010, minQuantity: 10 },
+  { metricType: 'REPOSTS', serviceId: '14549', costPer1000: 0.2938, minQuantity: 1 },
+  { metricType: 'FOLLOWERS', serviceId: '18302', costPer1000: 0.1814, minQuantity: 10 },
+];
+
 export interface CampaignRecord {
   id: string;
   reelUrl: string | null;

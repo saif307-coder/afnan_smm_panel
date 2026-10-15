@@ -82,8 +82,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!isNonEmptyString(body.serviceId)) {
-    errors.push(validationError('serviceId', 'serviceId is required and must be a non-empty string'));
+  const rawServiceId = String(body.serviceId || '').trim();
+  const cleanServiceId = rawServiceId.replace(/[^0-9]/g, '').trim();
+
+  if (!cleanServiceId) {
+    errors.push(validationError('serviceId', 'serviceId is required and must contain a valid numeric service ID'));
   }
 
   if (body.costPer1000 !== undefined && !isValidNumber(body.costPer1000, { min: 0 })) {
@@ -100,7 +103,7 @@ export async function POST(req: NextRequest) {
 
   const providerId = (body.providerId as string).trim();
   const metricType = body.metricType as string;
-  const serviceId = (body.serviceId as string).trim();
+  const serviceId = cleanServiceId;
   const costPer1000 = typeof body.costPer1000 === 'number' ? body.costPer1000 : 0;
   const minQuantity = typeof body.minQuantity === 'number' ? Math.floor(body.minQuantity) : parseInt(String(body.minQuantity || 0), 10) || 0;
   const isActive = body.isActive !== undefined ? Boolean(body.isActive) : true;
