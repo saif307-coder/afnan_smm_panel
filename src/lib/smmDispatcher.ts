@@ -11,18 +11,18 @@ import { ensureOfficialProvider } from '../../prisma/seedProvider';
 import { aggregateParentOrderStatus } from '@/utils/orderDeliveryProgress';
 
 // ─── Permanently Blacklisted Provider Service IDs ──────────────────────────
-// Banned: 19741, 12897, 14366, 14749, 14750, 9685, 14548, 16946 (stuck/broken/bot-raw)
-// Verified working: #19608 Shares, #14549 Reposts
+// Banned: 19741, 12897, 14366, 14749, 14750, 9685, 18803 (stuck/broken/bot-raw/wrong platform)
+// Verified working: #11610 Views, #7465 Viewers/Reach, #19262 Likes, #14548 Saves, #16949 Comments, #19608 Shares, #14549 Reposts, #17065 Followers
 export const DEFAULT_DISPATCHER_MAPPINGS: Record<string, { serviceId: string; costPer1000: number; minQuantity: number }> = {
   VIEWS:     { serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // 1-Hour Optimal High-Retention Views (Watch Hours, Impressions, Reach, Instant)
   VIEWERS:   { serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach / impressions
   REACH:     { serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach alias
-  LIKES:     { serviceId: '18302', costPer1000: 0.0100, minQuantity: 10  }, // 14750 BLACKLISTED
-  COMMENTS:  { serviceId: '18803', costPer1000: 0.3000, minQuantity: 10  }, // 16946 BLACKLISTED — auto-heal will resolve live service
-  SAVES:     { serviceId: '18302', costPer1000: 0.0029, minQuantity: 10  }, // 9685 BLACKLISTED
-  SHARES:    { serviceId: '19608', costPer1000: 0.0010, minQuantity: 10  }, // VERIFIED WORKING
-  REPOSTS:   { serviceId: '14549', costPer1000: 0.2938, minQuantity: 1   }, // VERIFIED WORKING
-  FOLLOWERS: { serviceId: '17065', costPer1000: 0.2957, minQuantity: 10  },
+  LIKES:     { serviceId: '19262', costPer1000: 0.0324, minQuantity: 100 }, // Verified working Instagram Likes (HQ Account, Instant)
+  COMMENTS:  { serviceId: '16949', costPer1000: 0.3794, minQuantity: 100 }, // Verified working Custom Comments (HQ Profiles, Instant)
+  SAVES:     { serviceId: '14548', costPer1000: 0.0392, minQuantity: 100 }, // Verified working Instagram Saves (Max 10M, Instant)
+  SHARES:    { serviceId: '19608', costPer1000: 0.0010, minQuantity: 100 }, // VERIFIED WORKING
+  REPOSTS:   { serviceId: '14549', costPer1000: 0.2938, minQuantity: 100 }, // VERIFIED WORKING
+  FOLLOWERS: { serviceId: '17065', costPer1000: 0.2957, minQuantity: 100 }, // VERIFIED WORKING
 };
 
 export interface DispatchItemResult {
@@ -138,6 +138,72 @@ export function normalizeLinkWithTrackingParam(link: string): string {
 }
 
 /**
+ * Generates an array of realistic Instagram comments matching exact requested quantity.
+ * Guarantees exactly `quantity` non-empty lines for custom comments services.
+ */
+export function generateRealisticCommentsPayload(quantity: number): string {
+  const templates = [
+    'Amazing content! 🔥',
+    'Love this! 💯',
+    'So good! Keep it up! 👏',
+    'Wow amazing! ❤️',
+    'This is great! 🙌',
+    'Incredible work! 🌟',
+    'Really impressive! 💪',
+    'Absolutely love it! 😍',
+    'Top quality content! 🎯',
+    'Keep going! You are the best! 🏆',
+    'Brilliant video! ✨',
+    'Super creative! 🚀',
+    'Fantastic execution! 👌',
+    'Awesome vibe! 🎉',
+    'Obsessed with this! 💖',
+    'Outstanding production! 🎬',
+    'Pure perfection! 💎',
+    'Such high quality! ⚡',
+    'Inspiring work! 🌈',
+    'Truly magnificent! 👑',
+    'Major inspiration! ✨',
+    'Best reel today! 🔥',
+    'Can’t stop watching this! 👏',
+    'The aesthetics are unreal! 🌟',
+    'Great job on this! 💯',
+    'Level of detail is insane! 🙌',
+    'Never seen anything this good! ❤️',
+    'Next level content! 🚀',
+    'Saved this immediately! 📌',
+    'Masterpiece right here! 💎',
+    'Totally killed it! 🔥',
+    'Unbelievable quality! 👏',
+    'Always delivering the best! 🏆',
+    'This deserves millions of views! 🌟',
+    'On repeat all day! 🎧',
+    'Pure art! 🎨',
+    'So satisfying to watch! 😍',
+    'Superb presentation! 👏',
+    'Always inspiring! 💡',
+    'Very well done! 💯',
+    'This is next tier! 🚀',
+    'Phenomenal work! 🌟',
+    'Love the dedication! 💪',
+    'Iconic moments! ✨',
+    'Golden standard right here! 🏆',
+    'Couldn’t agree more! 🙌',
+    'So aesthetic and clean! 💫',
+    'Big respect for this! 👑',
+    'Fire edit as always! 🔥',
+    'Can’t wait for more! 🚀',
+  ];
+
+  const lines: string[] = [];
+  const targetCount = Math.max(1, quantity);
+  for (let i = 0; i < targetCount; i++) {
+    lines.push(templates[i % templates.length]);
+  }
+  return lines.join('\n');
+}
+
+/**
  * Strict Instagram platform guard:
  * 1. Combined text `${service.category} ${service.name}` MUST match /instagram|\big\b/i
  * 2. Combined text MUST NOT match /telegram|tiktok|youtube|facebook|twitter|x\.com|kick|threads|twitch|spotify|discord|linkedin|snapchat|pinterest/i
@@ -195,7 +261,7 @@ export function calculateSpeedScore(service: { name?: string; category?: string 
  * Banned from ALL dispatch paths (Views, Viewers, Likes, Saves, Comments).
  */
 export const BLACKLISTED_VIEW_SERVICES = new Set([
-  '19741', '12897', '14366', '14749', '14750', '9685', '14548', '16946',
+  '19741', '12897', '14366', '14749', '14750', '9685', '18803',
 ]);
 
 /**
@@ -488,12 +554,7 @@ export async function handleActiveLinkFailoverAndRetry(
         quantity: item.quantity.toString(),
       };
       if (item.metricType === 'COMMENTS' && item.quantity > 0) {
-        altBaseParams.comments = [
-          'Amazing content! 🔥', 'Love this! 💯', 'So good! Keep it up! 👏',
-          'Wow amazing! ❤️', 'This is great! 🙌', 'Incredible work! 🌟',
-          'Really impressive! 💪', 'Absolutely love it! 😍',
-          'Top quality content! 🎯', 'Keep going! You are the best! 🏆',
-        ].join('\n');
+        altBaseParams.comments = generateRealisticCommentsPayload(item.quantity);
       }
       const params = new URLSearchParams(altBaseParams);
 
@@ -721,12 +782,7 @@ export async function autoHealAndRetryService(
       quantity: item.quantity.toString(),
     };
     if (item.metricType === 'COMMENTS' && item.quantity > 0) {
-      healBaseParams.comments = [
-        'Amazing content! \ud83d\udd25', 'Love this! \ud83d\udcaf', 'So good! Keep it up! \ud83d\udc4f',
-        'Wow amazing! \u2764\ufe0f', 'This is great! \ud83d\ude4c', 'Incredible work! \ud83c\udf1f',
-        'Really impressive! \ud83d\udcaa', 'Absolutely love it! \ud83d\ude0d',
-        'Top quality content! \ud83c\udfaf', 'Keep going! You are the best! \ud83c\udfc6',
-      ].join('\n');
+      healBaseParams.comments = generateRealisticCommentsPayload(item.quantity);
     }
     const params = new URLSearchParams(healBaseParams);
 
@@ -925,14 +981,17 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
       }
     }
 
-    // Min-quantity clamping: if calculated quantity is below provider minimum, clamp UP to minQuantity
-    // This prevents orders from being silently dropped — the provider will simply deliver the minimum.
-    if (mapping.minQuantity > 0 && item.quantity < mapping.minQuantity) {
-      const clampedQty = mapping.minQuantity;
+    // Min-quantity clamping: strictly enforce minimum quantity of 100 for all engagement sub-orders
+    // and respect provider minimum if higher.
+    // This prevents provider cancellations ("Quantity less than minimal 100").
+    const calculatedQty = item.quantity;
+    const requiredMin = Math.max(mapping.minQuantity || 0, 100);
+    const finalQty = Math.max(calculatedQty, requiredMin);
+    if (finalQty !== calculatedQty) {
       console.log(
-        `[SMM Dispatcher] Clamped ${item.metricType}: calculated ${item.quantity} -> ${clampedQty} (provider min requirement)`
+        `[SMM Dispatcher] Clamped ${item.metricType}: calculated ${calculatedQty} -> ${finalQty} (minimum 100 requirement)`
       );
-      item = { ...item, quantity: clampedQty };
+      item = { ...item, quantity: finalQty };
     }
 
     const estimatedCost = (item.quantity / 1000) * mapping.costPer1000;
@@ -948,22 +1007,10 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
         quantity: item.quantity.toString(),
       };
 
-      // For COMMENTS metric: include newline-separated default comments text payload.
-      // This prevents provider from auto-canceling due to missing comments field.
+      // For COMMENTS metric: include newline-separated comments text payload matching exact finalQty
+      // Provider requires exactly 1 non-empty comment line per requested unit.
       if (item.metricType === 'COMMENTS' && item.quantity > 0) {
-        const defaultCommentLines = [
-          'Amazing content! 🔥',
-          'Love this! 💯',
-          'So good! Keep it up! 👏',
-          'Wow amazing! ❤️',
-          'This is great! 🙌',
-          'Incredible work! 🌟',
-          'Really impressive! 💪',
-          'Absolutely love it! 😍',
-          'Top quality content! 🎯',
-          'Keep going! You are the best! 🏆',
-        ];
-        baseParams.comments = defaultCommentLines.join('\n');
+        baseParams.comments = generateRealisticCommentsPayload(item.quantity);
       }
 
       const params = new URLSearchParams(baseParams);
