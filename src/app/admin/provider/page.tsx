@@ -403,9 +403,8 @@ export default function AdminProviderPage() {
     setServicesError(null);
 
     try {
-      const url = `/api/admin/provider-services?providerId=${provider.id}${
-        forceRefresh ? '&refresh=true' : ''
-      }`;
+      const url = `/api/admin/provider-services?providerId=${provider.id}${forceRefresh ? '&refresh=true' : ''
+        }`;
       const res = await fetch(url);
       const data = await res.json();
 
@@ -765,11 +764,10 @@ export default function AdminProviderPage() {
 
           {testResult && (
             <div
-              className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-mono font-bold border ${
-                testResult.success
+              className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-mono font-bold border ${testResult.success
                   ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
                   : 'bg-rose-950/80 border-rose-500/50 text-rose-300'
-              }`}
+                }`}
             >
               <Activity className="w-4 h-4 shrink-0" />
               {testResult.success ? (
@@ -787,11 +785,10 @@ export default function AdminProviderPage() {
       {/* Toast Alert */}
       {toast?.show && (
         <div
-          className={`p-4 rounded-2xl border shadow-xl flex items-start justify-between gap-3 animate-in fade-in ${
-            toast.type === 'success'
+          className={`p-4 rounded-2xl border shadow-xl flex items-start justify-between gap-3 animate-in fade-in ${toast.type === 'success'
               ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
               : 'bg-rose-950/90 border-rose-500/60 text-rose-200'
-          }`}
+            }`}
         >
           <div className="flex items-start gap-2.5 text-xs font-semibold overflow-hidden">
             {toast.type === 'success' ? (
@@ -1368,11 +1365,10 @@ export default function AdminProviderPage() {
                       setSelectedCategory('ALL');
                       setCurrentPage(1);
                     }}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
-                      isSelected
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${isSelected
                         ? 'bg-indigo-600 text-white'
                         : 'bg-slate-900 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
-                    }`}
+                      }`}
                   >
                     {chip.label}
                   </button>

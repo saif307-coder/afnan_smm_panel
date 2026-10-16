@@ -247,7 +247,7 @@ export default function AdminOrdersPage() {
     }
   };
 
-  // 2. Stop Order (Change status to CANCELED)
+  // 2. Stop Order (Change status to CANCELED, notify provider via action=cancel, and auto-refund)
   const handleStopOrder = async (orderId: string) => {
     setActionLoadingId(orderId);
     try {
@@ -262,15 +262,18 @@ export default function AdminOrdersPage() {
         throw new Error(data.error || 'Failed to stop order');
       }
 
-      // Optimistically update status to CANCELED
+      const refunded = typeof data.refundedAmount === 'number' ? data.refundedAmount : 0;
+
+      // Optimistically update status to CANCELED and reflect refunded cost
       setOrders((prev) =>
         prev.map((o) => {
           if (o.id === orderId) {
             return {
               ...o,
               status: 'CANCELED',
+              totalCost: data.totalCost !== undefined ? data.totalCost : Math.max(0, o.totalCost - refunded),
               items: o.items?.map((item) =>
-                item.status === 'Completed' ? item : { ...item, status: 'Canceled' }
+                item.status === 'Completed' ? item : { ...item, status: 'Canceled', cost: 0 }
               ),
             };
           }
@@ -281,8 +284,14 @@ export default function AdminOrdersPage() {
       setToast({
         show: true,
         type: 'success',
-        message: `Order #${orderId.slice(-8)} was stopped and marked as CANCELED.`,
+        message: `Order #${orderId.slice(-8)} stopped & canceled at provider. Refunded: $${refunded.toFixed(4)} credited back.`,
       });
+
+      // Immediately refresh orders and live provider balance within 1 second
+      setTimeout(() => {
+        fetchOrders();
+        fetchLiveBalance();
+      }, 400);
     } catch (err) {
       setToast({
         show: true,
@@ -783,8 +792,15 @@ export default function AdminOrdersPage() {
                         <td className="py-3.5 px-4 text-white font-bold">
                           {order.baseViews.toLocaleString()}
                         </td>
-                        <td className="py-3.5 px-4 text-emerald-400 font-bold">
-                          ${order.totalCost.toFixed(4)}
+                        <td className="py-3.5 px-4 font-bold">
+                          {order.status === 'CANCELED' && order.totalCost === 0 ? (
+                            <span className="text-amber-400 font-mono inline-flex items-center gap-1.5" title="Order stopped and fully refunded">
+                              <span>$0.0000</span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">Refunded</span>
+                            </span>
+                          ) : (
+                            <span className="text-emerald-400 font-mono">${order.totalCost.toFixed(4)}</span>
+                          )}
                         </td>
                         <td className="py-3.5 px-4">{getStatusBadge(order.status)}</td>
                         <td className="py-3.5 px-4 font-sans">
@@ -872,7 +888,7 @@ export default function AdminOrdersPage() {
                           <td colSpan={8} className="p-0 font-sans">
                             <div className="sticky left-0 w-full max-w-[calc(100vw-2rem)] sm:max-w-none mx-auto px-3 py-4 sm:p-6 overflow-x-hidden min-w-0 space-y-4">
                               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 min-w-0">
-                                {/* Left: Calculated Quantities Breakdown */}
+                                {/* Left: Calculated Quantities Breakdown (Enforcing Viewers & Watch Time Standard) */}
                                 <div className="lg:col-span-5 p-3.5 sm:p-4 rounded-2xl bg-[#0e131f] border border-slate-800 space-y-3 min-w-0">
                                   <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2 min-w-0 gap-2">
                                     <span className="font-bold text-white flex items-center gap-2 min-w-0 truncate">
@@ -884,8 +900,29 @@ export default function AdminOrdersPage() {
                                     </span>
                                   </div>
 
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs font-mono">
-                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
+                                    {/* 1. Viewers (Strict 67.5%) */}
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-blue-500/30 min-w-0">
+                                      <span className="text-blue-400 text-xs flex items-center gap-1 font-medium min-w-0 truncate">
+                                        <Layers className="w-3 h-3 text-blue-400 shrink-0" /> <span className="truncate">Viewers (67.5%)</span>
+                                      </span>
+                                      <span className="text-blue-300 font-bold text-sm block mt-1">
+                                        {Math.round(order.baseViews * 0.675).toLocaleString()}
+                                      </span>
+                                    </div>
+
+                                    {/* 2. Avg Watch Time (Strict 42s / 0.7x) */}
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-teal-500/30 min-w-0">
+                                      <span className="text-teal-400 text-xs flex items-center gap-1 font-medium min-w-0 truncate">
+                                        <Clock className="w-3 h-3 text-teal-400 shrink-0" /> <span className="truncate">Watch Time</span>
+                                      </span>
+                                      <span className="text-teal-300 font-bold text-sm block mt-1">
+                                        42s (0.7x)
+                                      </span>
+                                    </div>
+
+                                    {/* 3. Likes */}
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
                                       <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
                                         <Heart className="w-3.5 h-3.5 text-rose-400 shrink-0" /> <span>Likes</span>
                                       </span>
@@ -894,7 +931,8 @@ export default function AdminOrdersPage() {
                                       </span>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                    {/* 4. Saves */}
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
                                       <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
                                         <Bookmark className="w-3.5 h-3.5 text-amber-400 shrink-0" /> <span>Saves</span>
                                       </span>
@@ -903,7 +941,8 @@ export default function AdminOrdersPage() {
                                       </span>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                    {/* 5. Shares */}
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
                                       <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
                                         <Share2 className="w-3.5 h-3.5 text-sky-400 shrink-0" /> <span>Shares</span>
                                       </span>
@@ -912,7 +951,8 @@ export default function AdminOrdersPage() {
                                       </span>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                    {/* 6. Reposts */}
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
                                       <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
                                         <Repeat2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> <span>Reposts</span>
                                       </span>
@@ -921,7 +961,8 @@ export default function AdminOrdersPage() {
                                       </span>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                    {/* 7. Comments */}
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
                                       <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
                                         <MessageCircle className="w-3.5 h-3.5 text-purple-400 shrink-0" /> <span>Comments</span>
                                       </span>
@@ -930,7 +971,8 @@ export default function AdminOrdersPage() {
                                       </span>
                                     </div>
 
-                                    <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
+                                    {/* 8. Follows */}
+                                    <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 min-w-0">
                                       <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium min-w-0">
                                         <UserPlus className="w-3.5 h-3.5 text-fuchsia-400 shrink-0" /> <span>Follows</span>
                                       </span>

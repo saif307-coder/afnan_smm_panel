@@ -381,7 +381,7 @@ export default function DashboardPreview() {
                   {viewersCount.toLocaleString()}
                 </div>
                 <div className="text-[10px] text-purple-400 mt-1 font-mono">
-                  {viewersRatio}% (65%–70%)
+                  {viewersRatio}% (67.5% Standard)
                 </div>
               </div>
 
@@ -394,8 +394,8 @@ export default function DashboardPreview() {
                 <div className="text-xl sm:text-2xl font-bold mt-1 text-white">
                   {avgWatchSeconds}s
                 </div>
-                <div className="text-[10px] text-amber-400 mt-1">
-                  Duration: {currentDuration}s (40–45s)
+                <div className="text-[10px] text-amber-400 mt-1 font-mono">
+                  42s (0.7x Watch-Time Standard)
                 </div>
               </div>
 

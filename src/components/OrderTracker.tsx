@@ -310,6 +310,9 @@ export default function OrderTracker() {
       case 'FOLLOWERS':
       case 'FOLLOWS':
         return <UserPlus className="w-4 h-4 text-fuchsia-400" />;
+      case 'VIEWERS':
+      case 'REACH':
+        return <Layers className="w-4 h-4 text-blue-400" />;
       case 'VIEWS':
       default:
         return <Eye className="w-4 h-4 text-blue-400" />;
@@ -543,8 +546,12 @@ export default function OrderTracker() {
                       />
                     </div>
 
-                    <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 pt-0.5">
-                      <span>Base Views: {order.baseViews.toLocaleString()}</span>
+                    <div className="flex flex-wrap justify-between items-center text-[10px] font-mono text-slate-400 pt-0.5 gap-2">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span>Base Views: <strong className="text-white">{order.baseViews.toLocaleString()}</strong></span>
+                        <span className="text-blue-400">Viewers (67.5%): <strong className="text-blue-300">{Math.round(order.baseViews * 0.675).toLocaleString()}</strong></span>
+                        <span className="text-teal-400">Avg Watch Time: <strong className="text-teal-300">42s (0.7x)</strong></span>
+                      </div>
                       <span>
                         {order.status === 'COMPLETED'
                           ? 'All items delivered successfully'

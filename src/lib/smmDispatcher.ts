@@ -10,14 +10,19 @@ import { prisma } from '@/lib/prisma';
 import { ensureOfficialProvider } from '../../prisma/seedProvider';
 import { aggregateParentOrderStatus } from '@/utils/orderDeliveryProgress';
 
+// ─── Permanently Blacklisted Provider Service IDs ──────────────────────────
+// Banned: 19741, 12897, 14366, 14749, 14750, 9685, 14548, 16946 (stuck/broken/bot-raw)
+// Verified working: #19608 Shares, #14549 Reposts
 export const DEFAULT_DISPATCHER_MAPPINGS: Record<string, { serviceId: string; costPer1000: number; minQuantity: number }> = {
-  VIEWS: { serviceId: '12897', costPer1000: 0.0004, minQuantity: 10 },
-  LIKES: { serviceId: '14750', costPer1000: 0.0100, minQuantity: 10 },
-  COMMENTS: { serviceId: '16946', costPer1000: 0.3498, minQuantity: 10 },
-  SAVES: { serviceId: '9685', costPer1000: 0.0029, minQuantity: 10 },
-  SHARES: { serviceId: '19608', costPer1000: 0.0010, minQuantity: 10 },
-  REPOSTS: { serviceId: '14549', costPer1000: 0.2938, minQuantity: 1 },
-  FOLLOWERS: { serviceId: '17065', costPer1000: 0.2957, minQuantity: 10 },
+  VIEWS:     { serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // High-retention views
+  VIEWERS:   { serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach / impressions
+  REACH:     { serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach alias
+  LIKES:     { serviceId: '18302', costPer1000: 0.0100, minQuantity: 10  }, // 14750 BLACKLISTED
+  COMMENTS:  { serviceId: '18803', costPer1000: 0.3000, minQuantity: 10  }, // 16946 BLACKLISTED — auto-heal will resolve live service
+  SAVES:     { serviceId: '18302', costPer1000: 0.0029, minQuantity: 10  }, // 9685 BLACKLISTED
+  SHARES:    { serviceId: '19608', costPer1000: 0.0010, minQuantity: 10  }, // VERIFIED WORKING
+  REPOSTS:   { serviceId: '14549', costPer1000: 0.2938, minQuantity: 1   }, // VERIFIED WORKING
+  FOLLOWERS: { serviceId: '17065', costPer1000: 0.2957, minQuantity: 10  },
 };
 
 export interface DispatchItemResult {
@@ -186,8 +191,71 @@ export function calculateSpeedScore(service: { name?: string; category?: string 
 }
 
 /**
+ * Permanently blacklisted service IDs — stuck, broken, or raw-counter bots.
+ * Banned from ALL dispatch paths (Views, Viewers, Likes, Saves, Comments).
+ */
+export const BLACKLISTED_VIEW_SERVICES = new Set([
+  '19741', '12897', '14366', '14749', '14750', '9685', '14548', '16946',
+]);
+
+/**
+ * High-Retention & Quality Scorer for Instagram Views.
+ * Prioritizes Watch Time, High-Retention, Unique Reach, Impressions, and Lifetime/Non-Drop.
+ * Completely eliminates raw-counter bot services.
+ */
+export function calculateViewsQualityScore(service: { service?: string | number; name?: string; category?: string }): number {
+  const cleanId = String(service.service || '').replace(/[^0-9]/g, '').trim();
+  if (BLACKLISTED_VIEW_SERVICES.has(cleanId)) {
+    return -999999;
+  }
+
+  const name = (service.name || '').toLowerCase();
+  const category = (service.category || '').toLowerCase();
+  const text = `${category} ${name}`;
+
+  let score = 0;
+
+  // Major priority: Watch Time / Watch Hours (+250)
+  if (/watch\s*time|watch\s*hours|\bhours\b/i.test(text)) {
+    score += 250;
+  }
+
+  // High Retention (+200)
+  if (/retention|high\s*retention/i.test(text)) {
+    score += 200;
+  }
+
+  // Reach & Impressions (+180)
+  if (/impressions?\s*\+\s*reach|reach|impressions?/i.test(text)) {
+    score += 180;
+  }
+
+  // Real / Non-Drop / Organic / Explore / Ads / Lifetime (+150)
+  if (/real|non[\s-]*drop|organic|explore|ads|lifetime/i.test(text)) {
+    score += 150;
+  }
+
+  // Video / Reels (+100)
+  if (/reels?|video/i.test(text)) {
+    score += 100;
+  }
+
+  // Instant / Fast start (+50)
+  if (/instant/i.test(text)) {
+    score += 50;
+  }
+
+  // Heavily penalize raw counter bots or cheap bot queues (-300)
+  if (/cheap|slow\b|raw/i.test(name)) {
+    score -= 300;
+  }
+
+  return score;
+}
+
+/**
  * Dynamically resolves candidate active, working Instagram services for a metric,
- * ranked by Delivery Speed FIRST, then cost, optionally excluding specific service IDs.
+ * ranked by Quality & Retention for Views, and Delivery Speed for engagement metrics.
  */
 export function matchCandidateActiveServices(
   services: ProviderServiceItem[],
@@ -212,6 +280,10 @@ export function matchCandidateActiveServices(
   ) => {
     return igServices
       .filter((s) => {
+        // Hard blacklist guard: reject permanently banned service IDs on ALL metrics
+        const cleanId = String(s.service).replace(/[^0-9]/g, '').trim();
+        if (BLACKLISTED_VIEW_SERVICES.has(cleanId)) return false;
+
         const name = (s.name || '').toLowerCase();
         const matches = nameKeywords.some((k) => name.includes(k.toLowerCase()));
         if (!matches) return false;
@@ -249,9 +321,11 @@ export function matchCandidateActiveServices(
     case 'VIEWS': {
       return igServices
         .filter((s) => {
+          const cleanId = String(s.service).replace(/[^0-9]/g, '').trim();
+          if (BLACKLISTED_VIEW_SERVICES.has(cleanId)) return false;
+
           const name = (s.name || '').toLowerCase();
           const category = (s.category || '').toLowerCase();
-          const text = `${category} ${name}`;
 
           // Specifically require /instagram/i AND /view|reel/i
           const hasViews = /views|view|reel/i.test(name) || (/views|view|reel/i.test(category) && /video|reel|all/i.test(name));
@@ -265,7 +339,7 @@ export function matchCandidateActiveServices(
           if (isOtherMetric) return false;
 
           const rate = parseFloat(String(s.rate)) || 0;
-          if (rate > 1.50) return false;
+          if (rate > 2.00) return false;
 
           const min = parseInt(String(s.min || 0), 10) || 0;
           if (min > 100) return false;
@@ -273,9 +347,9 @@ export function matchCandidateActiveServices(
           return true;
         })
         .sort((a, b) => {
-          // Priority 1: Speed Score
-          const scoreA = calculateSpeedScore(a);
-          const scoreB = calculateSpeedScore(b);
+          // Priority 1: Retention & Quality Score (Watch Time / Real / Impressions / Reach)
+          const scoreA = calculateViewsQualityScore(a);
+          const scoreB = calculateViewsQualityScore(b);
           if (scoreA !== scoreB) {
             return scoreB - scoreA;
           }
@@ -283,9 +357,46 @@ export function matchCandidateActiveServices(
           // Priority 2: Min Qty
           const minA = parseInt(String(a.min || 0), 10) || 0;
           const minB = parseInt(String(b.min || 0), 10) || 0;
-          const lowA = minA <= 100 ? 0 : 1;
-          const lowB = minB <= 100 ? 0 : 1;
-          if (lowA !== lowB) return lowA - lowB;
+          if (minA !== minB) return minA - minB;
+
+          // Priority 3: Rate
+          const rateA = parseFloat(String(a.rate)) || 0;
+          const rateB = parseFloat(String(b.rate)) || 0;
+          return rateA - rateB;
+        });
+    }
+    case 'VIEWERS':
+    case 'REACH': {
+      return igServices
+        .filter((s) => {
+          const cleanId = String(s.service).replace(/[^0-9]/g, '').trim();
+          if (BLACKLISTED_VIEW_SERVICES.has(cleanId)) return false;
+
+          const name = (s.name || '').toLowerCase();
+          const category = (s.category || '').toLowerCase();
+          const text = `${category} ${name}`;
+
+          const hasReach = /reach|impression|unique/i.test(text);
+          if (!hasReach) return false;
+
+          const isOther = /story views \||twitter|tiktok|auto\b|comment|save \[/i.test(name);
+          if (isOther) return false;
+
+          const rate = parseFloat(String(s.rate)) || 0;
+          if (rate > 2.0) return false;
+
+          return true;
+        })
+        .sort((a, b) => {
+          // Priority 1: Real / Reach quality
+          const isRealA = /real|reach/i.test(a.name) ? 1 : 0;
+          const isRealB = /real|reach/i.test(b.name) ? 1 : 0;
+          if (isRealA !== isRealB) return isRealB - isRealA;
+
+          // Priority 2: Min Qty (allows small orders)
+          const minA = parseInt(String(a.min || 0), 10) || 0;
+          const minB = parseInt(String(b.min || 0), 10) || 0;
+          if (minA !== minB) return minA - minB;
 
           // Priority 3: Rate
           const rateA = parseFloat(String(a.rate)) || 0;
@@ -369,13 +480,22 @@ export async function handleActiveLinkFailoverAndRetry(
     console.log(`[SMM Dispatcher Active-Link Failover] Retrying ${item.metricType} with alternate service #${cleanAltId} ("${alt.name}")...`);
 
     try {
-      const params = new URLSearchParams({
+      const altBaseParams: Record<string, string> = {
         key: provider.apiKey,
         action: 'add',
         service: cleanAltId,
         link: targetLink,
         quantity: item.quantity.toString(),
-      });
+      };
+      if (item.metricType === 'COMMENTS' && item.quantity > 0) {
+        altBaseParams.comments = [
+          'Amazing content! 🔥', 'Love this! 💯', 'So good! Keep it up! 👏',
+          'Wow amazing! ❤️', 'This is great! 🙌', 'Incredible work! 🌟',
+          'Really impressive! 💪', 'Absolutely love it! 😍',
+          'Top quality content! 🎯', 'Keep going! You are the best! 🏆',
+        ].join('\n');
+      }
+      const params = new URLSearchParams(altBaseParams);
 
       const response = await fetch(provider.apiUrl, {
         method: 'POST',
@@ -593,13 +713,22 @@ export async function autoHealAndRetryService(
 
   // Immediately retry dispatching with sanitized Service ID
   try {
-    const params = new URLSearchParams({
+    const healBaseParams: Record<string, string> = {
       key: provider.apiKey,
       action: 'add',
       service: String(Number(cleanNewServiceId) || cleanNewServiceId),
       link: targetLink,
       quantity: item.quantity.toString(),
-    });
+    };
+    if (item.metricType === 'COMMENTS' && item.quantity > 0) {
+      healBaseParams.comments = [
+        'Amazing content! \ud83d\udd25', 'Love this! \ud83d\udcaf', 'So good! Keep it up! \ud83d\udc4f',
+        'Wow amazing! \u2764\ufe0f', 'This is great! \ud83d\ude4c', 'Incredible work! \ud83c\udf1f',
+        'Really impressive! \ud83d\udcaa', 'Absolutely love it! \ud83d\ude0d',
+        'Top quality content! \ud83c\udfaf', 'Keep going! You are the best! \ud83c\udfc6',
+      ].join('\n');
+    }
+    const params = new URLSearchParams(healBaseParams);
 
     const response = await fetch(provider.apiUrl, {
       method: 'POST',
@@ -705,9 +834,11 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     });
   }
 
-  // 3. Build bundle list from order quantities
+  // 3. Build bundle list from order quantities (Enforcing Watch Time & 67.5% Viewers on Every Order)
+  const viewersQuantity = Math.round(order.baseViews * 0.675);
   const metricItems = [
     { metricType: 'VIEWS', quantity: order.baseViews },
+    { metricType: 'VIEWERS', quantity: viewersQuantity },
     { metricType: 'LIKES', quantity: order.likes },
     { metricType: 'SAVES', quantity: order.saves },
     { metricType: 'SHARES', quantity: order.shares },
@@ -724,12 +855,17 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
   const targetLink = order.targetReelUrl || 'https://www.instagram.com/reel/session_default/';
 
   // 4. Iterate and dispatch each metric with quantity > 0
-  for (const item of metricItems) {
+  for (const rawItem of metricItems) {
+    // Use a mutable copy so min-quantity clamping can adjust the quantity without re-assigning the const
+    let item = { ...rawItem };
     if (item.quantity <= 0) {
       continue;
     }
 
-    let mapping = mappingMap.get(item.metricType) || (item.metricType === 'FOLLOWERS' ? mappingMap.get('FOLLOWS') : undefined);
+    let mapping =
+      mappingMap.get(item.metricType) ||
+      (item.metricType === 'FOLLOWERS' ? mappingMap.get('FOLLOWS') : undefined) ||
+      (item.metricType === 'VIEWERS' ? mappingMap.get('REACH') : undefined);
     
     // Fallback to static defaults if not mapped
     if (!mapping && DEFAULT_DISPATCHER_MAPPINGS[item.metricType]) {
@@ -776,32 +912,48 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
       }
     }
 
-    // Smart skipping logic: Check minimum quantity required by provider service mapping
+    // Min-quantity clamping: if calculated quantity is below provider minimum, clamp UP to minQuantity
+    // This prevents orders from being silently dropped — the provider will simply deliver the minimum.
     if (mapping.minQuantity > 0 && item.quantity < mapping.minQuantity) {
-      console.log(`[SMM Dispatcher] Skipped ${item.metricType}: calculated ${item.quantity} is below minimum requirement (${mapping.minQuantity})`);
-      dispatchResults.push({
-        metricType: item.metricType,
-        serviceId: cleanServiceId,
-        quantity: item.quantity,
-        cost: 0,
-        status: 'SKIPPED',
-        error: `Skipped: Qty (${item.quantity}) below provider min (${mapping.minQuantity})`,
-      });
-      continue;
+      const clampedQty = mapping.minQuantity;
+      console.log(
+        `[SMM Dispatcher] Clamped ${item.metricType}: calculated ${item.quantity} -> ${clampedQty} (provider min requirement)`
+      );
+      item = { ...item, quantity: clampedQty };
     }
 
     const estimatedCost = (item.quantity / 1000) * mapping.costPer1000;
 
     try {
-      // Build form-urlencoded payload for standard SMM API (service sanitized as clean integer/numeric string)
+      // Build form-urlencoded payload for standard SMMGen API v2 (service as clean numeric string)
       const sanitizedService = String(Number(cleanServiceId) || cleanServiceId);
-      const params = new URLSearchParams({
+      const baseParams: Record<string, string> = {
         key: provider.apiKey,
         action: 'add',
         service: sanitizedService,
         link: targetLink,
         quantity: item.quantity.toString(),
-      });
+      };
+
+      // For COMMENTS metric: include newline-separated default comments text payload.
+      // This prevents provider from auto-canceling due to missing comments field.
+      if (item.metricType === 'COMMENTS' && item.quantity > 0) {
+        const defaultCommentLines = [
+          'Amazing content! 🔥',
+          'Love this! 💯',
+          'So good! Keep it up! 👏',
+          'Wow amazing! ❤️',
+          'This is great! 🙌',
+          'Incredible work! 🌟',
+          'Really impressive! 💪',
+          'Absolutely love it! 😍',
+          'Top quality content! 🎯',
+          'Keep going! You are the best! 🏆',
+        ];
+        baseParams.comments = defaultCommentLines.join('\n');
+      }
+
+      const params = new URLSearchParams(baseParams);
 
       const response = await fetch(provider.apiUrl, {
         method: 'POST',
@@ -1051,5 +1203,262 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
     items: dispatchResults,
     providerId: provider.id,
     providerName: provider.name,
+  };
+}
+
+/**
+ * Sends action=cancel request to SMM provider for one or more active provider order IDs.
+ */
+export async function cancelProviderOrders(
+  provider: { apiUrl: string; apiKey: string },
+  orderIds: Array<string | number>
+): Promise<Array<{ order: string | number; cancel?: string | number; error?: string }>> {
+  if (!orderIds || orderIds.length === 0) return [];
+
+  const cleanIds = orderIds
+    .map((id) => String(id).replace(/[^0-9]/g, '').trim())
+    .filter((id) => id.length > 0);
+
+  if (cleanIds.length === 0) return [];
+
+  const cleanUrl = provider.apiUrl.trim().replace(/\/+$/, '');
+  const cleanKey = provider.apiKey.trim();
+
+  try {
+    const params = new URLSearchParams({
+      key: cleanKey,
+      action: 'cancel',
+      orders: cleanIds.join(','),
+    });
+
+    const res = await fetch(cleanUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+      signal: AbortSignal.timeout(12000),
+      cache: 'no-store',
+    });
+
+    const text = await res.text();
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return cleanIds.map((id) => ({ order: id, error: `Invalid response: ${text.slice(0, 100)}` }));
+    }
+
+    if (Array.isArray(json)) {
+      return json as Array<{ order: string | number; cancel?: string | number; error?: string }>;
+    } else if (typeof json === 'object' && json !== null) {
+      return [json as { order: string | number; cancel?: string | number; error?: string }];
+    }
+    return [];
+  } catch (err) {
+    console.error('[SMM Dispatcher] cancelProviderOrders error:', err);
+    return cleanIds.map((id) => ({ order: id, error: err instanceof Error ? err.message : String(err) }));
+  }
+}
+
+/**
+ * Queries action=status on SMM provider to capture live start count, remains, and status.
+ */
+export async function fetchProviderOrderStatus(
+  provider: { apiUrl: string; apiKey: string },
+  providerOrderId: string | number
+): Promise<{ status?: string; charge?: string; start_count?: string | number; remains?: string | number; error?: string } | null> {
+  const cleanUrl = provider.apiUrl.trim().replace(/\/+$/, '');
+  const cleanKey = provider.apiKey.trim();
+  const cleanId = String(providerOrderId).replace(/[^0-9]/g, '').trim();
+
+  if (!cleanId) return null;
+
+  try {
+    const params = new URLSearchParams({
+      key: cleanKey,
+      action: 'status',
+      order: cleanId,
+    });
+
+    const res = await fetch(cleanUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+      signal: AbortSignal.timeout(8000),
+      cache: 'no-store',
+    });
+
+    if (res.ok) {
+      const text = await res.text();
+      return JSON.parse(text);
+    }
+  } catch {
+    // Non-blocking
+  }
+  return null;
+}
+
+export interface RefundCalculationResult {
+  orderId: string;
+  previousTotalCost: number;
+  newTotalCost: number;
+  refundedAmount: number;
+  itemsUpdated: number;
+  details: Array<{
+    itemId: string;
+    metricType: string;
+    quantity: number;
+    delivered: number;
+    remains: number;
+    originalCost: number;
+    effectiveCost: number;
+    refunded: number;
+    status: string;
+  }>;
+}
+
+/**
+ * Unified Idempotent Refund & Cost Calculation Engine
+ * 
+ * Accurately calculates delivered vs undelivered units and refunds:
+ * - 100% refund (cost = $0.0000) for CANCELED / FAILED / SKIPPED items with 0 delivered units.
+ * - Proportional refund for PARTIAL or stopped items with partial delivery (charges only for delivered = quantity - remains).
+ * - Fully idempotent: subsequent runs yield refundedAmount = 0 once DB is updated.
+ */
+export async function recalculateOrderCostsAndRefunds(orderId: string): Promise<RefundCalculationResult> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      items: true,
+      provider: {
+        include: {
+          mappings: true,
+        },
+      },
+    },
+  });
+
+  if (!order) {
+    throw new Error(`Order ${orderId} not found`);
+  }
+
+  const previousTotalCost = Number(order.totalCost || 0);
+
+  // Map serviceId / metricType to costPer1000 for deterministic baseline cost computation
+  const mappingRateMap = new Map<string, number>();
+  if (order.provider?.mappings) {
+    for (const m of order.provider.mappings) {
+      mappingRateMap.set(m.metricType.toUpperCase(), m.costPer1000);
+      if (m.serviceId) {
+        mappingRateMap.set(String(m.serviceId).replace(/[^0-9]/g, ''), m.costPer1000);
+      }
+    }
+  }
+
+  let newTotalCost = 0;
+  let itemsUpdated = 0;
+  const details = [];
+
+  for (const item of order.items) {
+    const qty = Math.max(0, item.quantity);
+    const metricKey = item.metricType.toUpperCase();
+    const cleanSvc = item.serviceId ? String(item.serviceId).replace(/[^0-9]/g, '') : '';
+    
+    // Determine baseline costPer1000
+    const fallbackRate = DEFAULT_DISPATCHER_MAPPINGS[metricKey]?.costPer1000 || 0;
+    const ratePer1000 = mappingRateMap.get(cleanSvc) ?? mappingRateMap.get(metricKey) ?? fallbackRate;
+    const originalBaselineCost = qty > 0 ? (qty / 1000) * ratePer1000 : (item.cost || 0);
+
+    const normStatus = (item.status || 'Pending').toLowerCase();
+    const isCompleted = normStatus.includes('complete');
+    const isCanceled = normStatus.includes('cancel');
+    const isPartial = normStatus.includes('partial');
+    const isFailed = normStatus.includes('fail');
+    const isSkipped = normStatus.includes('skip');
+
+    let effectiveCost = originalBaselineCost;
+    let delivered = qty;
+    const remains = item.remains !== null && item.remains !== undefined ? Math.max(0, item.remains) : qty;
+
+    if (isCompleted) {
+      delivered = qty;
+      effectiveCost = originalBaselineCost;
+    } else if (isCanceled || isFailed || isSkipped) {
+      // If stopped/canceled/failed:
+      // If provider reported explicit remains > 0 and < qty, charge proportionally for delivered portion
+      if (item.remains !== null && item.remains !== undefined && item.remains > 0 && item.remains < qty) {
+        delivered = qty - item.remains;
+        const unitCost = qty > 0 ? originalBaselineCost / qty : 0;
+        effectiveCost = Number((delivered * unitCost).toFixed(6));
+      } else {
+        // 0 delivered units -> 100% full refund
+        delivered = 0;
+        effectiveCost = 0;
+      }
+    } else if (isPartial) {
+      if (item.remains !== null && item.remains !== undefined && item.remains > 0 && item.remains < qty) {
+        delivered = qty - item.remains;
+      } else {
+        delivered = 0;
+      }
+      const unitCost = qty > 0 ? originalBaselineCost / qty : 0;
+      effectiveCost = Number((delivered * unitCost).toFixed(6));
+    } else {
+      // In progress / Processing / Pending
+      delivered = 0;
+      effectiveCost = originalBaselineCost;
+    }
+
+    const itemRefund = Math.max(0, originalBaselineCost - effectiveCost);
+
+    // Update OrderItem in database if cost changed
+    if (Math.abs(item.cost - effectiveCost) > 0.00001) {
+      await prisma.orderItem.update({
+        where: { id: item.id },
+        data: { cost: effectiveCost },
+      });
+      itemsUpdated++;
+    }
+
+    newTotalCost += effectiveCost;
+    details.push({
+      itemId: item.id,
+      metricType: item.metricType,
+      quantity: qty,
+      delivered,
+      remains,
+      originalCost: originalBaselineCost,
+      effectiveCost,
+      refunded: itemRefund,
+      status: item.status,
+    });
+  }
+
+  // Rounded to 4 decimal places
+  newTotalCost = Number(newTotalCost.toFixed(4));
+  const refundedAmount = Math.max(0, Number((previousTotalCost - newTotalCost).toFixed(4)));
+
+  // If order is completely canceled and all items have 0 cost, set order totalCost to 0
+  const isOrderFullyCanceled = order.status === 'CANCELED' || order.items.every((i) => ['Canceled', 'Failed', 'Skipped'].includes(i.status));
+  if (isOrderFullyCanceled && newTotalCost === 0) {
+    newTotalCost = 0;
+  }
+
+  // Update parent order totalCost
+  await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      totalCost: newTotalCost,
+    },
+  });
+
+  return {
+    orderId,
+    previousTotalCost,
+    newTotalCost,
+    refundedAmount,
+    itemsUpdated,
+    details,
   };
 }

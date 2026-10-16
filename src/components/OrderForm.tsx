@@ -647,25 +647,38 @@ export default function OrderForm() {
               />
             </div>
 
-            {/* Estimated Reach & Viewers Insight */}
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-300">
-                <span className="flex items-center gap-1.5">
+            {/* High-Retention Watch-Time & Unique Viewers Insight (Client Quality Standard) */}
+            <div className="p-4 rounded-xl bg-gradient-to-br from-blue-950/40 via-indigo-950/30 to-purple-950/40 border border-blue-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-blue-300">
                   <Layers className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Estimated Unique Viewers</span>
+                  <span>Unique Viewers (Accounts Reached)</span>
                 </span>
-                <span className="font-mono font-bold text-white">
-                  {(calculated.viewers ?? Math.round(baseViews * 0.675)).toLocaleString()}
+                <span className="font-mono font-bold text-sm text-white">
+                  {calculated.viewers.toLocaleString()}{' '}
+                  <span className="text-[11px] font-normal text-blue-400">(67.5%)</span>
                 </span>
               </div>
-              <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+              <div className="w-full bg-slate-800/80 h-2 rounded-full overflow-hidden flex">
                 <div
-                  className="bg-blue-500 h-full transition-all duration-300"
-                  style={{ width: `${Math.min(100, percentages.viewersPercentage ?? 67.5)}%` }}
+                  className="bg-gradient-to-r from-blue-500 to-indigo-500 h-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, calculated.viewersPercentage ?? 67.5)}%` }}
                 />
               </div>
-              <p className="text-[11px] text-slate-400">
-                Natural ratio: ~67.5% of total views count as unique accounts reached.
+
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80 text-xs">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-black/30 border border-slate-800">
+                  <span className="text-slate-400 text-[11px]">Avg Watch Time</span>
+                  <span className="font-mono font-bold text-emerald-400">42s (0.7x)</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-black/30 border border-slate-800">
+                  <span className="text-slate-400 text-[11px]">Total Watch Time</span>
+                  <span className="font-mono font-bold text-indigo-300">{calculated.totalWatchTimeMinutes.toLocaleString()} min</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                ✨ <strong className="text-slate-300">Global High-Retention Standard:</strong> Dispatched to premium Watch-Time & Real Viewers service, ensuring ~42s retention and ~67.5% real accounts reached.
               </p>
             </div>
           </div>

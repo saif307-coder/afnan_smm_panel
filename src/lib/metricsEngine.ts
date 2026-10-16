@@ -28,7 +28,10 @@ export interface GraphYAxisTicks {
 export interface ReelMetricsResult {
   views: number;
   viewers: number;
+  watchTimeRatio: number;
   avgWatchTimeSeconds: number;
+  totalWatchTimeMinutes: number;
+  viewersPercentage: number;
   follows: number;
   followersPercentage: number;
   nonFollowersPercentage: number;
@@ -93,17 +96,17 @@ export function calculateReelMetrics(
   const seed = seedString ?? `reel_metrics_${safeViews}_${safeDuration}`;
   const rng = createSeededRandom(seed);
 
-  // 1. Viewers Ratio (Strictly 65% to 70%)
-  const viewerRatio = 0.65 + rng() * 0.05;
+  // 1. Viewers Ratio (Strictly 67.5% Unique Viewers / Accounts Reached on Every Order)
+  const viewerRatio = 0.675;
   const viewers = Math.round(safeViews * viewerRatio);
 
-  // 2. Average Watch Time (Strictly 40s to 45s per 60s video, proportional)
-  // Base 60s watch time: 40 + [0, 5] seconds
-  const base60WatchTime = 40 + rng() * 5;
+  // 2. Average Watch Time (Strictly 0.7 ratio = 42s per 60s video, proportional)
+  const watchTimeRatio = 0.7;
   const avgWatchTimeSeconds = Math.max(
     1,
-    Math.min(safeDuration, Math.round((safeDuration / 60) * base60WatchTime))
+    Math.min(safeDuration, Math.round(safeDuration * watchTimeRatio))
   );
+  const totalWatchTimeMinutes = Math.round(safeViews * watchTimeRatio);
 
   // 3. Follows Ratio (Strictly 20 to 25 per 100,000 views)
   const followsRatio = 20 + rng() * 5;
@@ -186,7 +189,10 @@ export function calculateReelMetrics(
   return {
     views: safeViews,
     viewers,
+    watchTimeRatio,
     avgWatchTimeSeconds,
+    totalWatchTimeMinutes,
+    viewersPercentage: 67.5,
     follows,
     followersPercentage,
     nonFollowersPercentage,

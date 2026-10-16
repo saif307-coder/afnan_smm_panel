@@ -13,6 +13,7 @@ export interface MetricPercentages {
   commentsPercentage: number;
   followsPercentage: number;
   viewersPercentage?: number;
+  avgWatchTimeRatio?: number;
 }
 
 export interface CalculatedQuantities {
@@ -24,7 +25,11 @@ export interface CalculatedQuantities {
   comments: number;
   followers: number;
   follows: number; // alias for followers to ensure robust compatibility
-  viewers?: number;
+  viewers: number;
+  watchTimeRatio: number;
+  avgWatchTimeSeconds: number;
+  totalWatchTimeMinutes: number;
+  viewersPercentage: number;
   totalEngagement: number;
   engagementRate: number; // percentage of views that engaged
 }
@@ -37,6 +42,7 @@ export const DEFAULT_PERCENTAGES: MetricPercentages = {
   commentsPercentage: 0.12,
   followsPercentage: 0.025,
   viewersPercentage: 67.5,
+  avgWatchTimeRatio: 0.7,
 };
 
 /**
@@ -66,6 +72,7 @@ export function calculateQuantities(
   const commentsPct = safePercent(percentages.commentsPercentage, DEFAULT_PERCENTAGES.commentsPercentage);
   const followsPct = safePercent(percentages.followsPercentage, DEFAULT_PERCENTAGES.followsPercentage);
   const viewersPct = safePercent(percentages.viewersPercentage, DEFAULT_PERCENTAGES.viewersPercentage ?? 67.5);
+  const watchRatio = safePercent(percentages.avgWatchTimeRatio, DEFAULT_PERCENTAGES.avgWatchTimeRatio ?? 0.7);
 
   // Exact rounded integer counts
   const likes = Math.round(safeViews * (likesPct / 100));
@@ -74,7 +81,13 @@ export function calculateQuantities(
   const reposts = Math.round(safeViews * (repostsPct / 100));
   const comments = Math.round(safeViews * (commentsPct / 100));
   const followers = Math.round(safeViews * (followsPct / 100));
+  
+  // Exact 67.5% Unique Viewers / Reach
   const viewers = Math.round(safeViews * (viewersPct / 100));
+
+  // High-Retention Watch Time Standard: 0.7 ratio = 42s average watch time per view
+  const avgWatchTimeSeconds = Math.round(watchRatio * 60); // 0.7 * 60 = 42s
+  const totalWatchTimeMinutes = Math.round(safeViews * watchRatio);
 
   const totalEngagement = likes + saves + shares + reposts + comments;
   const engagementRate = safeViews > 0 
@@ -91,6 +104,10 @@ export function calculateQuantities(
     followers,
     follows: followers,
     viewers,
+    watchTimeRatio: watchRatio,
+    avgWatchTimeSeconds,
+    totalWatchTimeMinutes,
+    viewersPercentage: viewersPct,
     totalEngagement,
     engagementRate,
   };

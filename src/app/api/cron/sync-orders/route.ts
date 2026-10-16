@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { handleOptions, jsonResponse } from '@/lib/cors';
 import { aggregateParentOrderStatus } from '@/utils/orderDeliveryProgress';
+import { recalculateOrderCostsAndRefunds } from '@/lib/smmDispatcher';
 
 export async function OPTIONS() {
   return handleOptions();
@@ -229,6 +230,14 @@ async function executeOrderSync() {
         remains: i.remains,
       }))
     );
+
+    const hasCanceledOrPartialOrFailed = parentOrder.items.some((i) =>
+      ['Canceled', 'Partial', 'Failed'].some((s) => (i.status || '').toLowerCase().includes(s.toLowerCase()))
+    );
+
+    if (hasCanceledOrPartialOrFailed || ['CANCELED', 'PARTIAL', 'FAILED'].includes(evaluatedStatus)) {
+      await recalculateOrderCostsAndRefunds(orderId);
+    }
 
     const shouldUpdateCost = parentOrder.totalCost === 0 && computedTotalCost > 0;
     if (evaluatedStatus !== parentOrder.status || updatedResponsesJson !== parentOrder.providerResponsesJson || shouldUpdateCost) {

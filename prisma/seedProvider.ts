@@ -9,14 +9,16 @@ const OFFICIAL_PROVIDER = {
   isActive: true,
 };
 
+// BLACKLISTED IDs (permanently banned): 19741, 12897, 14366, 14749, 14750, 9685, 14548, 16946
+// Verified working: #19608 Shares, #14549 Reposts
 const DEFAULT_MAPPINGS = [
-  { metricType: 'VIEWS', serviceId: '12897', costPer1000: 0.0004, minQuantity: 10 },
-  { metricType: 'LIKES', serviceId: '14749', costPer1000: 0.0090, minQuantity: 10 },
-  { metricType: 'SAVES', serviceId: '14548', costPer1000: 0.0392, minQuantity: 1 },
-  { metricType: 'SHARES', serviceId: '19608', costPer1000: 0.0010, minQuantity: 10 },
-  { metricType: 'REPOSTS', serviceId: '14549', costPer1000: 0.2938, minQuantity: 1 },
-  { metricType: 'COMMENTS', serviceId: '16946', costPer1000: 0.3498, minQuantity: 10 },
-  { metricType: 'FOLLOWERS', serviceId: '18302', costPer1000: 0.1814, minQuantity: 10 },
+  { metricType: 'VIEWS',     serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // High-retention views
+  { metricType: 'LIKES',     serviceId: '18302', costPer1000: 0.0100, minQuantity: 10  }, // 14750 BLACKLISTED
+  { metricType: 'SAVES',     serviceId: '17065', costPer1000: 0.0392, minQuantity: 10  }, // 14548 BLACKLISTED
+  { metricType: 'SHARES',    serviceId: '19608', costPer1000: 0.0010, minQuantity: 10  }, // VERIFIED WORKING
+  { metricType: 'REPOSTS',   serviceId: '14549', costPer1000: 0.2938, minQuantity: 1   }, // VERIFIED WORKING
+  { metricType: 'COMMENTS',  serviceId: '18803', costPer1000: 0.3000, minQuantity: 10  }, // 16946 BLACKLISTED — auto-heal resolves live service
+  { metricType: 'FOLLOWERS', serviceId: '18302', costPer1000: 0.1814, minQuantity: 10  },
 ];
 
 export async function ensureOfficialProvider() {

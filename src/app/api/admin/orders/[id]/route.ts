@@ -1,6 +1,11 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { handleOptions, jsonResponse } from '@/lib/cors';
+import {
+  cancelProviderOrders,
+  fetchProviderOrderStatus,
+  recalculateOrderCostsAndRefunds,
+} from '@/lib/smmDispatcher';
 
 export async function OPTIONS() {
   return handleOptions();
@@ -51,7 +56,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
  * PATCH /api/admin/orders/[id]
  * Updates order properties:
  * - targetUrl / targetReelUrl (fixes typos)
- * - status (e.g. CANCELED to manually stop)
+ * - status (e.g. CANCELED to manually stop & cancel at provider with instant refund)
  */
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   try {
@@ -69,7 +74,10 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
     const existingOrder = await prisma.order.findUnique({
       where: { id },
-      include: { items: true },
+      include: {
+        items: true,
+        provider: true,
+      },
     });
 
     if (!existingOrder) {
@@ -102,44 +110,110 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Execute atomic update
-    const updatedOrder = await prisma.$transaction(async (tx) => {
-      // If status changed to CANCELED, update non-completed items to Canceled
-      if (newStatus === 'CANCELED') {
-        await tx.orderItem.updateMany({
-          where: {
-            orderId: id,
-            status: { notIn: ['Completed', 'COMPLETED'] },
-          },
-          data: {
-            status: 'Canceled',
-          },
-        });
+    let refundedAmount = 0;
+    let newTotalCost = existingOrder.totalCost;
+
+    // Handle CANCELED order stop action
+    if (newStatus === 'CANCELED') {
+      const activeProvider =
+        existingOrder.provider ||
+        (await prisma.smmProvider.findFirst({
+          where: { isActive: true },
+        }));
+
+      // Collect all active sub-orders that are not yet Completed
+      const cancellableItems = existingOrder.items.filter(
+        (i) => !['Completed', 'COMPLETED'].includes(i.status)
+      );
+
+      // 1. Query latest status from provider before cancellation to capture exact remains & start count
+      if (activeProvider) {
+        for (const item of cancellableItems) {
+          if (item.providerOrderId) {
+            try {
+              const liveStatus = await fetchProviderOrderStatus(activeProvider, item.providerOrderId);
+              if (liveStatus && liveStatus.remains !== undefined) {
+                const parsedRemains = parseInt(String(liveStatus.remains), 10);
+                const parsedStart = parseInt(String(liveStatus.start_count), 10);
+                await prisma.orderItem.update({
+                  where: { id: item.id },
+                  data: {
+                    remains: !isNaN(parsedRemains) ? parsedRemains : item.remains,
+                    startCount: !isNaN(parsedStart) ? parsedStart : item.startCount,
+                  },
+                });
+              }
+            } catch (statusErr) {
+              console.warn(`[Order Stop] Failed pre-cancel status query for item ${item.id}:`, statusErr);
+            }
+          }
+        }
+
+        // 2. Send action=cancel to provider API for all active provider order IDs
+        const providerOrderIds = cancellableItems
+          .map((i) => i.providerOrderId)
+          .filter((id): id is string => Boolean(id));
+
+        if (providerOrderIds.length > 0) {
+          try {
+            console.log(`[Order Stop] Calling action=cancel on provider for orders: ${providerOrderIds.join(',')}`);
+            const cancelResults = await cancelProviderOrders(activeProvider, providerOrderIds);
+            console.log(`[Order Stop] Provider cancel results:`, cancelResults);
+          } catch (cancelErr) {
+            console.error(`[Order Stop] Provider cancel error:`, cancelErr);
+          }
+        }
       }
 
-      // If target URL changed, update the order
-      const order = await tx.order.update({
-        where: { id },
-        data: updateData,
-        include: {
-          provider: {
-            select: { id: true, name: true, apiUrl: true },
-          },
-          items: {
-            orderBy: { createdAt: 'asc' },
-          },
+      // 3. Mark non-completed items as Canceled in DB
+      await prisma.orderItem.updateMany({
+        where: {
+          orderId: id,
+          status: { notIn: ['Completed', 'COMPLETED'] },
+        },
+        data: {
+          status: 'Canceled',
         },
       });
 
-      return order;
+      // 4. Update parent order status to CANCELED
+      await prisma.order.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // 5. Execute unified idempotent refund and cost recalculation engine
+      const refundResult = await recalculateOrderCostsAndRefunds(id);
+      refundedAmount = refundResult.refundedAmount;
+      newTotalCost = refundResult.newTotalCost;
+    } else {
+      // Non-cancel update (e.g. targetUrl)
+      await prisma.order.update({
+        where: { id },
+        data: updateData,
+      });
+    }
+
+    const updatedOrder = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        provider: {
+          select: { id: true, name: true, apiUrl: true },
+        },
+        items: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
 
     return jsonResponse({
       success: true,
       message:
         newStatus === 'CANCELED'
-          ? 'Order status updated to CANCELED (stopped)'
+          ? `Order stopped & canceled at provider. Refunded: $${refundedAmount.toFixed(4)}`
           : 'Order updated successfully',
+      refundedAmount,
+      totalCost: newTotalCost,
       data: updatedOrder,
     });
   } catch (error) {
