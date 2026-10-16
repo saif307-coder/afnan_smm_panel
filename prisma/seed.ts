@@ -5,18 +5,20 @@ const prisma = new PrismaClient();
 const ACTIVE_PROVIDER = {
   name: 'SMM Pro Provider (Official Production)',
   apiUrl: 'https://my.smmgen.com/api/v2',
-  apiKey: '1f6daf1143778ae5b33f5ba1e67c80bb',
+  apiKey: '04271cf8865171842ee08da1fdf5f5e4',
   isActive: true,
 };
 
 const DEFAULT_MAPPINGS = [
-  { metricType: 'VIEWS', serviceId: '12897', costPer1000: 0.0004, minQuantity: 10 },
-  { metricType: 'LIKES', serviceId: '14749', costPer1000: 0.0090, minQuantity: 10 },
-  { metricType: 'SAVES', serviceId: '14548', costPer1000: 0.0392, minQuantity: 1 },
+  { metricType: 'VIEWS', serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // 1-Hour Optimal High-Retention Views
+  { metricType: 'VIEWERS', serviceId: '7465', costPer1000: 0.0331, minQuantity: 100 }, // Unique reach / impressions
+  { metricType: 'REACH', serviceId: '7465', costPer1000: 0.0331, minQuantity: 100 }, // Unique reach alias
+  { metricType: 'LIKES', serviceId: '18302', costPer1000: 0.0100, minQuantity: 10 },
+  { metricType: 'SAVES', serviceId: '18302', costPer1000: 0.0029, minQuantity: 10 },
   { metricType: 'SHARES', serviceId: '19608', costPer1000: 0.0010, minQuantity: 10 },
   { metricType: 'REPOSTS', serviceId: '14549', costPer1000: 0.2938, minQuantity: 1 },
-  { metricType: 'COMMENTS', serviceId: '16946', costPer1000: 0.3498, minQuantity: 10 },
-  { metricType: 'FOLLOWERS', serviceId: '18302', costPer1000: 0.1814, minQuantity: 10 },
+  { metricType: 'COMMENTS', serviceId: '18803', costPer1000: 0.3000, minQuantity: 10 },
+  { metricType: 'FOLLOWERS', serviceId: '17065', costPer1000: 0.2957, minQuantity: 10 },
 ];
 
 

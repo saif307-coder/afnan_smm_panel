@@ -26,6 +26,29 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // Close mobile drawer on Escape key press
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mobileMenuOpen) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mobileMenuOpen]);
+
+  // Prevent background scrolling when mobile drawer is open
+  React.useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileMenuOpen]);
+
   // If on login page, render full screen without admin shell
   if (pathname === '/admin/login') {
     return <>{children}</>;
@@ -35,19 +58,19 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     {
       name: 'Orders Dashboard',
       href: '/admin',
-      icon: <ShoppingBag className="w-4 h-4" />,
+      icon: <ShoppingBag className="w-4 h-4 shrink-0" />,
       exact: true,
     },
     {
       name: 'System Settings',
       href: '/admin/settings',
-      icon: <Sliders className="w-4 h-4" />,
+      icon: <Sliders className="w-4 h-4 shrink-0" />,
       exact: false,
     },
     {
       name: 'SMM Provider & Mappings',
       href: '/admin/provider',
-      icon: <Server className="w-4 h-4" />,
+      icon: <Server className="w-4 h-4 shrink-0" />,
       exact: false,
     },
   ];
@@ -67,26 +90,40 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div className="min-h-screen bg-[#07090E] text-slate-100 flex flex-col md:flex-row antialiased selection:bg-fuchsia-500/30 selection:text-white">
-      {/* Mobile Top Header */}
-      <div className="md:hidden flex items-center justify-between p-4 bg-[#0e131f] border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white">
+      {/* Mobile Top Sticky Header */}
+      <div className="md:hidden sticky top-0 z-40 flex items-center justify-between p-3.5 sm:p-4 bg-[#0e131f]/95 border-b border-slate-800 backdrop-blur-md">
+        <Link href="/admin" className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-sm">
             <ShieldCheck className="w-5 h-5" />
           </div>
-          <span className="font-bold text-white text-sm">Afnan SMM Admin</span>
-        </div>
+          <div>
+            <span className="font-extrabold text-white text-sm block leading-tight">Afnan Admin</span>
+            <span className="text-[10px] text-fuchsia-400 font-mono font-medium block">Console</span>
+          </div>
+        </Link>
         <button
+          type="button"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white"
+          aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+          className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white active:scale-95 transition"
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
+      {/* Mobile Backdrop Overlay */}
+      {mobileMenuOpen && (
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-black/75 backdrop-blur-xs md:hidden transition-opacity"
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar Desktop & Mobile Drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#0e131f]/95 border-r border-slate-800/80 p-5 flex flex-col justify-between backdrop-blur-xl transition-transform duration-300 md:static md:translate-x-0 ${
-          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-[#0e131f] border-r border-slate-800/80 p-5 flex flex-col justify-between backdrop-blur-xl transition-transform duration-300 ease-out overflow-y-auto md:static md:translate-x-0 ${
+          mobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
         }`}
       >
         <div className="space-y-6">
@@ -214,7 +251,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-x-hidden">
+      <main className="flex-1 p-3.5 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-x-hidden min-w-0">
         {children}
       </main>
     </div>

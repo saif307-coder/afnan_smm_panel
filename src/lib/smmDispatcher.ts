@@ -14,7 +14,7 @@ import { aggregateParentOrderStatus } from '@/utils/orderDeliveryProgress';
 // Banned: 19741, 12897, 14366, 14749, 14750, 9685, 14548, 16946 (stuck/broken/bot-raw)
 // Verified working: #19608 Shares, #14549 Reposts
 export const DEFAULT_DISPATCHER_MAPPINGS: Record<string, { serviceId: string; costPer1000: number; minQuantity: number }> = {
-  VIEWS:     { serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // High-retention views
+  VIEWS:     { serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // 1-Hour Optimal High-Retention Views (Watch Hours, Impressions, Reach, Instant)
   VIEWERS:   { serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach / impressions
   REACH:     { serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach alias
   LIKES:     { serviceId: '18302', costPer1000: 0.0100, minQuantity: 10  }, // 14750 BLACKLISTED
@@ -872,7 +872,20 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
       mapping = DEFAULT_DISPATCHER_MAPPINGS[item.metricType];
     }
 
-    const cleanServiceId = mapping ? String(mapping.serviceId).replace(/[^0-9]/g, '').trim() : '';
+    let cleanServiceId = mapping ? String(mapping.serviceId).replace(/[^0-9]/g, '').trim() : '';
+
+    // Hard blacklist guard: if mapped service is in permanent blacklist, replace with verified safe default
+    if (cleanServiceId && BLACKLISTED_VIEW_SERVICES.has(cleanServiceId)) {
+      console.warn(
+        `[SMM Dispatcher] Service ID #${cleanServiceId} for ${item.metricType} is in the permanent blacklist. Falling back to default.`
+      );
+      if (DEFAULT_DISPATCHER_MAPPINGS[item.metricType]) {
+        mapping = DEFAULT_DISPATCHER_MAPPINGS[item.metricType];
+        cleanServiceId = String(mapping.serviceId).replace(/[^0-9]/g, '').trim();
+      } else {
+        cleanServiceId = '';
+      }
+    }
 
     // If no mapping exists yet or serviceId is blank, attempt auto-healing right away
     if (!mapping || !cleanServiceId) {

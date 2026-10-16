@@ -4,21 +4,23 @@ const prisma = new PrismaClient();
 
 const OFFICIAL_PROVIDER = {
   name: 'SMM Pro Provider (Official Production)',
-  apiUrl: 'https://smmproprovider.online/api/v2',
-  apiKey: 'f33672c260df0b9870026508f1e176d1',
+  apiUrl: 'https://my.smmgen.com/api/v2',
+  apiKey: '04271cf8865171842ee08da1fdf5f5e4',
   isActive: true,
 };
 
 // BLACKLISTED IDs (permanently banned): 19741, 12897, 14366, 14749, 14750, 9685, 14548, 16946
-// Verified working: #19608 Shares, #14549 Reposts
+// Verified working: #11610 Views (1-Hour Retention), #7465 Viewers/Reach, #19608 Shares, #14549 Reposts
 const DEFAULT_MAPPINGS = [
-  { metricType: 'VIEWS',     serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // 12897 BLACKLISTED
-  { metricType: 'LIKES',     serviceId: '18302', costPer1000: 0.0100, minQuantity: 10  }, // 14749/14750 BLACKLISTED
-  { metricType: 'SAVES',     serviceId: '17065', costPer1000: 0.0392, minQuantity: 10  }, // 14548/9685 BLACKLISTED
+  { metricType: 'VIEWS',     serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // 1-Hour Optimal High-Retention Views
+  { metricType: 'VIEWERS',   serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach / impressions
+  { metricType: 'REACH',     serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach alias
+  { metricType: 'LIKES',     serviceId: '18302', costPer1000: 0.0100, minQuantity: 10  },
+  { metricType: 'SAVES',     serviceId: '18302', costPer1000: 0.0029, minQuantity: 10  },
   { metricType: 'SHARES',    serviceId: '19608', costPer1000: 0.0010, minQuantity: 10  }, // VERIFIED WORKING
   { metricType: 'REPOSTS',   serviceId: '14549', costPer1000: 0.2938, minQuantity: 1   }, // VERIFIED WORKING
-  { metricType: 'COMMENTS',  serviceId: '18803', costPer1000: 0.3000, minQuantity: 10  }, // 16946 BLACKLISTED
-  { metricType: 'FOLLOWERS', serviceId: '18302', costPer1000: 0.1814, minQuantity: 10  },
+  { metricType: 'COMMENTS',  serviceId: '18803', costPer1000: 0.3000, minQuantity: 10  },
+  { metricType: 'FOLLOWERS', serviceId: '17065', costPer1000: 0.2957, minQuantity: 10  },
 ];
 
 async function ensureOfficialProvider() {

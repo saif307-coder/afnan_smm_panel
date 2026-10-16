@@ -1,14 +1,14 @@
 import { calculateReelMetrics, ReelMetricsResult } from './metricsEngine';
 
 // BLACKLISTED (permanently banned - stuck/broken): 19741, 12897, 14366, 14749, 14750, 9685, 14548, 16946
-// Working verified: #19608 Shares, #14549 Reposts
+// Verified working: #11610 Views (1-Hour Retention), #7465 Viewers/Reach, #19608 Shares, #14549 Reposts
 export const DEFAULT_SERVICE_MAPPINGS = [
-  { metricType: 'VIEWS',     serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 },
-  { metricType: 'VIEWERS',   serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 },
-  { metricType: 'REACH',     serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 },
-  { metricType: 'LIKES',     serviceId: '18302', costPer1000: 0.0100, minQuantity: 10  }, // 14750 BLACKLISTED
-  { metricType: 'COMMENTS',  serviceId: '19741', costPer1000: 0.3000, minQuantity: 10  }, // 16946 BLACKLISTED — auto-heal will find live service
-  { metricType: 'SAVES',     serviceId: '17065', costPer1000: 0.0029, minQuantity: 10  }, // 9685 BLACKLISTED
+  { metricType: 'VIEWS',     serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // 1-Hour Optimal High-Retention Views
+  { metricType: 'VIEWERS',   serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach / impressions
+  { metricType: 'REACH',     serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach alias
+  { metricType: 'LIKES',     serviceId: '18302', costPer1000: 0.0100, minQuantity: 10  },
+  { metricType: 'COMMENTS',  serviceId: '18803', costPer1000: 0.3000, minQuantity: 10  },
+  { metricType: 'SAVES',     serviceId: '18302', costPer1000: 0.0029, minQuantity: 10  },
   { metricType: 'SHARES',    serviceId: '19608', costPer1000: 0.0010, minQuantity: 10  }, // VERIFIED WORKING
   { metricType: 'REPOSTS',   serviceId: '14549', costPer1000: 0.2938, minQuantity: 1   }, // VERIFIED WORKING
   { metricType: 'FOLLOWERS', serviceId: '17065', costPer1000: 0.2957, minQuantity: 10  },
