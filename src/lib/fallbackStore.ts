@@ -6,12 +6,12 @@ export const DEFAULT_SERVICE_MAPPINGS = [
   { metricType: 'VIEWS',     serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // 1-Hour Optimal High-Retention Views
   { metricType: 'VIEWERS',   serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach / impressions
   { metricType: 'REACH',     serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach alias
-  { metricType: 'LIKES',     serviceId: '19262', costPer1000: 0.0324, minQuantity: 100 }, // Enforced min 100
-  { metricType: 'COMMENTS',  serviceId: '16949', costPer1000: 0.3794, minQuantity: 100 }, // Enforced min 100
-  { metricType: 'SAVES',     serviceId: '14548', costPer1000: 0.0392, minQuantity: 100 }, // Enforced min 100
-  { metricType: 'SHARES',    serviceId: '19608', costPer1000: 0.0010, minQuantity: 100 }, // Enforced min 100
-  { metricType: 'REPOSTS',   serviceId: '14549', costPer1000: 0.2938, minQuantity: 100 }, // Enforced min 100
-  { metricType: 'FOLLOWERS', serviceId: '17065', costPer1000: 0.2957, minQuantity: 100 }, // Enforced min 100
+  { metricType: 'LIKES',     serviceId: '19262', costPer1000: 0.0324, minQuantity: 10  }, // Low-min (1-10) verified working
+  { metricType: 'COMMENTS',  serviceId: '16949', costPer1000: 0.3794, minQuantity: 10  }, // Low-min (10) verified working Custom Comments
+  { metricType: 'SAVES',     serviceId: '14548', costPer1000: 0.0392, minQuantity: 10  }, // Low-min (1-10) verified working
+  { metricType: 'SHARES',    serviceId: '19608', costPer1000: 0.0010, minQuantity: 10  }, // Low-min (10) verified working
+  { metricType: 'REPOSTS',   serviceId: '14549', costPer1000: 0.2938, minQuantity: 1   }, // Low-min (1) verified working
+  { metricType: 'FOLLOWERS', serviceId: '17065', costPer1000: 0.2957, minQuantity: 10  }, // Low-min (10) verified working
 ];
 
 export interface CampaignRecord {

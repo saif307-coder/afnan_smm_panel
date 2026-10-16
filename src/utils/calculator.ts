@@ -14,6 +14,7 @@ export interface MetricPercentages {
   followsPercentage: number;
   viewersPercentage?: number;
   avgWatchTimeRatio?: number;
+  customWatchTime?: number;
 }
 
 export interface CalculatedQuantities {
@@ -32,6 +33,8 @@ export interface CalculatedQuantities {
   viewersPercentage: number;
   totalEngagement: number;
   engagementRate: number; // percentage of views that engaged
+  customWatchTime?: number;
+  watchTimeString: string;
 }
 
 export const DEFAULT_PERCENTAGES: MetricPercentages = {
@@ -43,18 +46,34 @@ export const DEFAULT_PERCENTAGES: MetricPercentages = {
   followsPercentage: 0.025,
   viewersPercentage: 67.5,
   avgWatchTimeRatio: 0.7,
+  customWatchTime: 42,
 };
 
 /**
+ * Format watch time into consistent display string (e.g. "25s (~0.4x)" or "42s (0.7x)")
+ */
+export function formatWatchTime(customWatchTime?: number | null, fallbackRatio: number = 0.7): string {
+  if (typeof customWatchTime === 'number' && customWatchTime > 0) {
+    const sec = Math.round(customWatchTime);
+    return `${sec}s (~${(sec / 60).toFixed(1)}x)`;
+  }
+  const defaultSec = Math.round(fallbackRatio * 60);
+  return `${defaultSec}s (${fallbackRatio}x)`;
+}
+
+/**
  * Calculates deterministic exact integer quantities based on base views and percentage ratios.
+ * Supports per-order customWatchTime in seconds based on individual video length.
  * 
  * @param baseViews - The base view count (e.g., 100,000)
  * @param percentages - Object containing percentage ratios for each metric
+ * @param customWatchTimeOverride - Optional explicit per-order watch time in seconds (e.g. 25)
  * @returns Object with exact integer counts for each metric and summary statistics
  */
 export function calculateQuantities(
   baseViews: number,
-  percentages: Partial<MetricPercentages> = {}
+  percentages: Partial<MetricPercentages> = {},
+  customWatchTimeOverride?: number
 ): CalculatedQuantities {
   const safeViews = Math.max(0, Math.floor(Number.isFinite(baseViews) ? baseViews : 0));
 
@@ -85,9 +104,23 @@ export function calculateQuantities(
   // Exact 67.5% Unique Viewers / Reach
   const viewers = Math.round(safeViews * (viewersPct / 100));
 
-  // High-Retention Watch Time Standard: 0.7 ratio = 42s average watch time per view
-  const avgWatchTimeSeconds = Math.round(watchRatio * 60); // 0.7 * 60 = 42s
-  const totalWatchTimeMinutes = Math.round(safeViews * watchRatio);
+  // Determine watch time: Per-Order customWatchTime overrides global defaults
+  const customWatch = (typeof customWatchTimeOverride === 'number' && customWatchTimeOverride > 0)
+    ? customWatchTimeOverride
+    : (typeof percentages.customWatchTime === 'number' && percentages.customWatchTime > 0)
+    ? percentages.customWatchTime
+    : undefined;
+
+  const avgWatchTimeSeconds = customWatch !== undefined 
+    ? Math.round(customWatch) 
+    : Math.round(watchRatio * 60);
+
+  const effectiveWatchRatio = customWatch !== undefined
+    ? Number((customWatch / 60).toFixed(2))
+    : watchRatio;
+
+  const totalWatchTimeMinutes = Math.round(safeViews * (avgWatchTimeSeconds / 60));
+  const watchTimeString = formatWatchTime(customWatch, effectiveWatchRatio);
 
   const totalEngagement = likes + saves + shares + reposts + comments;
   const engagementRate = safeViews > 0 
@@ -104,12 +137,14 @@ export function calculateQuantities(
     followers,
     follows: followers,
     viewers,
-    watchTimeRatio: watchRatio,
+    watchTimeRatio: effectiveWatchRatio,
     avgWatchTimeSeconds,
     totalWatchTimeMinutes,
     viewersPercentage: viewersPct,
     totalEngagement,
     engagementRate,
+    customWatchTime: customWatch,
+    watchTimeString,
   };
 }
 

@@ -89,6 +89,7 @@ model Order {
   baseViews             Int
   percentagesJson       String
   calculatedMetricsJson String?
+  customWatchTime       Int?         // Per-order custom watch time in seconds (overrides global default)
   likes                 Int          @default(0)
   saves                 Int          @default(0)
   shares                Int          @default(0)

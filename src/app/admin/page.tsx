@@ -31,8 +31,10 @@ import {
   X,
   Save,
   Link2,
+  Plus,
 } from 'lucide-react';
 import { calculateSubOrderDelivery } from '@/utils/orderDeliveryProgress';
+import { formatWatchTime } from '@/utils/calculator';
 
 interface SubOrderItem {
   id: string;
@@ -59,6 +61,7 @@ interface OrderItem {
   reposts: number;
   comments: number;
   followers: number;
+  customWatchTime?: number | null;
   totalCost: number;
   status: string;
   providerId: string | null;
@@ -83,10 +86,26 @@ export default function AdminOrdersPage() {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
+  // New Order Modal State (Admin Manual Dispatch)
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false);
+  const [newOrderForm, setNewOrderForm] = useState<{
+    targetReelUrl: string;
+    baseViews: number;
+    customWatchTime: number;
+    autoDispatch: boolean;
+  }>({
+    targetReelUrl: '',
+    baseViews: 100000,
+    customWatchTime: 25,
+    autoDispatch: true,
+  });
+  const [submittingNewOrder, setSubmittingNewOrder] = useState(false);
+
   // Edit Modal State
   const [editingOrder, setEditingOrder] = useState<{
     id: string;
     targetUrl: string;
+    customWatchTime: number;
   } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -197,11 +216,75 @@ export default function AdminOrdersPage() {
 
   // ─── ADMIN CRUD ACTIONS ───────────────────────────────────────────────────
 
-  // 1. Edit Target URL Handler
+  // 0. Manual Order Creation & SMM Dispatch Handler
+  const handleCreateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOrderForm.customWatchTime || newOrderForm.customWatchTime <= 0) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: 'Custom Watch Time (Seconds) - Based on Video Length is required and must be > 0.',
+      });
+      return;
+    }
+    if (newOrderForm.baseViews <= 0) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: 'Base views count must be greater than 0.',
+      });
+      return;
+    }
+
+    setSubmittingNewOrder(true);
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetReelUrl: newOrderForm.targetReelUrl.trim() || undefined,
+          baseViews: newOrderForm.baseViews,
+          customWatchTime: newOrderForm.customWatchTime,
+          autoDispatch: newOrderForm.autoDispatch,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to dispatch order');
+      }
+
+      setToast({
+        show: true,
+        type: 'success',
+        message: `Order #${(data.data?.id || '').slice(-8)} successfully created & dispatched with ${newOrderForm.customWatchTime}s watch time!`,
+      });
+      setShowNewOrderModal(false);
+      setNewOrderForm({
+        targetReelUrl: '',
+        baseViews: 100000,
+        customWatchTime: 25,
+        autoDispatch: true,
+      });
+      await fetchOrders();
+      await fetchLiveBalance();
+    } catch (err) {
+      setToast({
+        show: true,
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to create order',
+      });
+    } finally {
+      setSubmittingNewOrder(false);
+    }
+  };
+
+  // 1. Edit Target URL & Watch Time Handler
   const handleOpenEdit = (order: OrderItem) => {
     setEditingOrder({
       id: order.id,
       targetUrl: order.targetReelUrl || '',
+      customWatchTime: order.customWatchTime || 42,
     });
   };
 
@@ -212,28 +295,36 @@ export default function AdminOrdersPage() {
     setSavingEdit(true);
     const orderId = editingOrder.id;
     const newUrl = editingOrder.targetUrl.trim();
+    const newWatchTime = Math.max(1, Math.round(editingOrder.customWatchTime));
 
     try {
       const res = await fetch(`/api/admin/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUrl: newUrl }),
+        body: JSON.stringify({
+          targetUrl: newUrl,
+          customWatchTime: newWatchTime,
+        }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to update target URL');
+        throw new Error(data.error || 'Failed to update order');
       }
 
       // Optimistically update order in local state
       setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, targetReelUrl: newUrl || null } : o))
+        prev.map((o) =>
+          o.id === orderId
+            ? { ...o, targetReelUrl: newUrl || null, customWatchTime: newWatchTime }
+            : o
+        )
       );
 
       setToast({
         show: true,
         type: 'success',
-        message: `Target URL successfully updated for Order #${orderId.slice(-8)}.`,
+        message: `Order #${orderId.slice(-8)} successfully updated with ${newWatchTime}s watch time.`,
       });
       setEditingOrder(null);
     } catch (err) {
@@ -526,6 +617,16 @@ export default function AdminOrdersPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {/* New Order Button (Admin Manual Dispatch) */}
+          <button
+            onClick={() => setShowNewOrderModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-fuchsia-600 hover:from-blue-500 hover:via-indigo-500 hover:to-fuchsia-500 active:scale-95 text-white shadow-lg shadow-indigo-600/30 transition"
+            title="Create and manually dispatch a new order with Custom Watch Time"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Order</span>
+          </button>
+
           {/* Live Balance Pill in Header */}
           <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 shadow-sm">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -911,13 +1012,13 @@ export default function AdminOrdersPage() {
                                       </span>
                                     </div>
 
-                                    {/* 2. Avg Watch Time (Strict 42s / 0.7x) */}
+                                    {/* 2. Avg Watch Time (Per-Order Custom or Global Standard) */}
                                     <div className="p-2.5 rounded-xl bg-slate-950/70 border border-teal-500/30 min-w-0">
                                       <span className="text-teal-400 text-xs flex items-center gap-1 font-medium min-w-0 truncate">
                                         <Clock className="w-3 h-3 text-teal-400 shrink-0" /> <span className="truncate">Watch Time</span>
                                       </span>
                                       <span className="text-teal-300 font-bold text-sm block mt-1">
-                                        42s (0.7x)
+                                        {formatWatchTime(order.customWatchTime)}
                                       </span>
                                     </div>
 
@@ -1147,6 +1248,34 @@ export default function AdminOrdersPage() {
                 </p>
               </div>
 
+              {/* Custom Watch Time (Seconds) - Based on Video Length */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Custom Watch Time (Seconds) - Based on Video Length</span>
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-teal-400">
+                    {formatWatchTime(editingOrder.customWatchTime)}
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max="3600"
+                  value={editingOrder.customWatchTime}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setEditingOrder((prev) => (prev ? { ...prev, customWatchTime: isNaN(parsed) ? 1 : parsed } : null));
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-teal-500 transition"
+                />
+                <p className="text-[11px] text-slate-500">
+                  Override watch time duration specifically for this video length (e.g. 25s yields ~0.4x).
+                </p>
+              </div>
+
               <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800/80">
                 <button
                   type="button"
@@ -1171,6 +1300,188 @@ export default function AdminOrdersPage() {
                     <>
                       <Save className="w-3.5 h-3.5" />
                       <span>Save Changes</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* NEW ORDER / MANUAL DISPATCH MODAL */}
+      {showNewOrderModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-lg p-6 rounded-3xl bg-[#0e131f] border border-slate-800 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-fuchsia-600 text-white">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Manual Order Dispatch (Admin)</h3>
+                  <p className="text-xs text-slate-400">Directly dispatch a campaign to SMM provider with per-order watch time</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowNewOrderModal(false)}
+                disabled={submittingNewOrder}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateOrder} className="space-y-4">
+              {/* Target URL */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Target Instagram Media / Reel URL</span>
+                </label>
+                <input
+                  type="url"
+                  value={newOrderForm.targetReelUrl}
+                  onChange={(e) => setNewOrderForm((prev) => ({ ...prev, targetReelUrl: e.target.value }))}
+                  placeholder="https://www.instagram.com/reel/C7xY9z0A1b2/"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+
+              {/* Base Views */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Base Views</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-indigo-400 font-bold">
+                    {newOrderForm.baseViews.toLocaleString()}
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="100"
+                  step="1000"
+                  value={newOrderForm.baseViews}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setNewOrderForm((prev) => ({ ...prev, baseViews: isNaN(parsed) ? 0 : parsed }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 transition"
+                />
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {[10000, 50000, 100000, 250000, 500000].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setNewOrderForm((prev) => ({ ...prev, baseViews: v }))}
+                      className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                        newOrderForm.baseViews === v
+                          ? 'bg-indigo-600 text-white font-bold'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {v >= 1000000 ? `${v / 1000000}M` : `${v / 1000}K`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* REQUIRED: Custom Watch Time (Seconds) - Based on Video Length */}
+              <div className="space-y-1.5 p-3.5 rounded-2xl bg-slate-950/70 border border-teal-500/40">
+                <label className="text-xs font-semibold text-white flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Custom Watch Time (Seconds) - Based on Video Length</span>
+                    <span className="text-rose-400 font-bold">*</span>
+                  </span>
+                  <span className="text-xs font-mono font-bold text-teal-300">
+                    {formatWatchTime(newOrderForm.customWatchTime)}
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  id="admin-new-order-watch-time"
+                  required
+                  min="1"
+                  max="3600"
+                  value={newOrderForm.customWatchTime}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setNewOrderForm((prev) => ({
+                      ...prev,
+                      customWatchTime: isNaN(parsed) ? 1 : parsed,
+                    }));
+                  }}
+                  placeholder="e.g. 25"
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-teal-500 transition"
+                />
+                <p className="text-[11px] text-slate-400">
+                  Required duration input per individual video length (e.g. 25s yields ~0.4x).
+                </p>
+
+                {/* Preset Chips */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {[
+                    { sec: 15, label: '15s (~0.3x)' },
+                    { sec: 25, label: '25s (~0.4x)' },
+                    { sec: 30, label: '30s (~0.5x)' },
+                    { sec: 42, label: '42s (0.7x)' },
+                    { sec: 60, label: '60s (1.0x)' },
+                    { sec: 90, label: '90s (~1.5x)' },
+                  ].map(({ sec, label }) => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setNewOrderForm((prev) => ({ ...prev, customWatchTime: sec }))}
+                      className={`px-2 py-0.5 rounded text-[11px] font-mono transition ${
+                        newOrderForm.customWatchTime === sec
+                          ? 'bg-teal-600 text-white font-bold'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Calculated Quick Summary */}
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] font-mono text-slate-400 flex items-center justify-between">
+                <span>Calculated Unique Viewers (67.5%):</span>
+                <span className="font-bold text-blue-400">
+                  {Math.round(newOrderForm.baseViews * 0.675).toLocaleString()}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800/80">
+                <button
+                  type="button"
+                  onClick={() => setShowNewOrderModal(false)}
+                  disabled={submittingNewOrder}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={submittingNewOrder}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white shadow-lg shadow-indigo-600/30 transition disabled:opacity-50"
+                >
+                  {submittingNewOrder ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Dispatching Order...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Dispatch Order</span>
                     </>
                   )}
                 </button>

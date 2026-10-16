@@ -103,9 +103,20 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       updateData.status = newStatus;
     }
 
+    // 3. Handle Custom Watch Time update (per video length)
+    if (body.customWatchTime !== undefined) {
+      if (typeof body.customWatchTime === 'number' && body.customWatchTime > 0) {
+        updateData.customWatchTime = Math.round(body.customWatchTime);
+      } else if (typeof body.customWatchTime === 'string' && parseInt(body.customWatchTime, 10) > 0) {
+        updateData.customWatchTime = parseInt(body.customWatchTime, 10);
+      } else if (body.customWatchTime === null) {
+        updateData.customWatchTime = null;
+      }
+    }
+
     if (Object.keys(updateData).length === 0) {
       return jsonResponse(
-        { success: false, error: 'No valid fields provided to update (targetUrl, status)' },
+        { success: false, error: 'No valid fields provided to update (targetUrl, status, customWatchTime)' },
         { status: 400 }
       );
     }

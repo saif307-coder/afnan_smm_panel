@@ -92,11 +92,20 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3. Compute exact integer quantities via Phase 3 Mathematical Engine
-  const calculated = calculateQuantities(baseViews, percentages);
+  // 3. Extract and Validate per-order Custom Watch Time (Seconds)
+  const customWatchTime = typeof body.customWatchTime === 'number' && body.customWatchTime > 0
+    ? Math.round(body.customWatchTime)
+    : (typeof body.customWatchTime === 'string' && parseInt(body.customWatchTime, 10) > 0)
+    ? parseInt(body.customWatchTime, 10)
+    : (typeof percentages.customWatchTime === 'number' && percentages.customWatchTime > 0)
+    ? Math.round(percentages.customWatchTime)
+    : null;
+
+  // 4. Compute exact integer quantities via Phase 3 Mathematical Engine (with customWatchTime)
+  const calculated = calculateQuantities(baseViews, percentages, customWatchTime ?? undefined);
 
   try {
-    // 4. Save Initial Order with status PENDING
+    // 5. Save Initial Order with status PENDING and customWatchTime
     const initialOrder = await prisma.order.create({
       data: {
         targetReelUrl,
@@ -109,6 +118,7 @@ export async function POST(req: NextRequest) {
         reposts: calculated.reposts,
         comments: calculated.comments,
         followers: calculated.followers,
+        customWatchTime,
         status: 'PENDING',
       },
     });

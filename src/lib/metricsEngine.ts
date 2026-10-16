@@ -31,6 +31,8 @@ export interface ReelMetricsResult {
   watchTimeRatio: number;
   avgWatchTimeSeconds: number;
   totalWatchTimeMinutes: number;
+  watchTimeString?: string;
+  customWatchTime?: number;
   viewersPercentage: number;
   follows: number;
   followersPercentage: number;
@@ -79,8 +81,8 @@ export function formatMetricNumber(num: number): string {
 
 /**
  * Calculate deterministic Reel metrics adhering to strict business constraints:
- * 1. Viewers: 65% - 70% of views
- * 2. Average Watch Time: 40s - 45s per 60s video (scaled proportionally)
+ * 1. Viewers: 65% - 70% of views (strictly 67.5%)
+ * 2. Average Watch Time: Per-order customWatchTime or 40s - 45s per 60s video (scaled proportionally)
  * 3. Follows: 20 - 25 per 100,000 views
  * 4. Countries: Strict descending order [USA/United States (26.4-31.2%), UK (18.1-21.5%), Canada (12.4-15.0%), Australia (7.8-10.2%), Germany (4.2-6.5%)]
  * 5. Dynamic 12-point velocity curve with midTick (~75%) and topTick (~150%)
@@ -89,7 +91,8 @@ export function calculateReelMetrics(
   views: number,
   videoDurationSeconds: number = 60,
   seedString?: string,
-  countryLabelFormat: 'USA' | 'United States' = 'USA'
+  countryLabelFormat: 'USA' | 'United States' = 'USA',
+  customWatchTime?: number
 ): ReelMetricsResult {
   const safeViews = Math.max(0, Math.floor(views));
   const safeDuration = Math.max(1, Math.floor(videoDurationSeconds));
@@ -100,13 +103,20 @@ export function calculateReelMetrics(
   const viewerRatio = 0.675;
   const viewers = Math.round(safeViews * viewerRatio);
 
-  // 2. Average Watch Time (Strictly 0.7 ratio = 42s per 60s video, proportional)
-  const watchTimeRatio = 0.7;
-  const avgWatchTimeSeconds = Math.max(
-    1,
-    Math.min(safeDuration, Math.round(safeDuration * watchTimeRatio))
-  );
-  const totalWatchTimeMinutes = Math.round(safeViews * watchTimeRatio);
+  // 2. Average Watch Time (Per-Order Custom Watch Time overrides global default 0.7 ratio)
+  const hasCustomWatch = typeof customWatchTime === 'number' && customWatchTime > 0;
+  const watchTimeRatio = hasCustomWatch
+    ? Number((customWatchTime / safeDuration).toFixed(2))
+    : 0.7;
+
+  const avgWatchTimeSeconds = hasCustomWatch
+    ? Math.max(1, Math.round(customWatchTime))
+    : Math.max(1, Math.min(safeDuration, Math.round(safeDuration * watchTimeRatio)));
+
+  const totalWatchTimeMinutes = Math.round(safeViews * (avgWatchTimeSeconds / 60));
+  const watchTimeString = hasCustomWatch
+    ? `${avgWatchTimeSeconds}s (~${(avgWatchTimeSeconds / safeDuration).toFixed(1)}x)`
+    : `${avgWatchTimeSeconds}s (${watchTimeRatio}x)`;
 
   // 3. Follows Ratio (Strictly 20 to 25 per 100,000 views)
   const followsRatio = 20 + rng() * 5;
@@ -192,6 +202,8 @@ export function calculateReelMetrics(
     watchTimeRatio,
     avgWatchTimeSeconds,
     totalWatchTimeMinutes,
+    watchTimeString,
+    customWatchTime: hasCustomWatch ? customWatchTime : undefined,
     viewersPercentage: 67.5,
     follows,
     followersPercentage,

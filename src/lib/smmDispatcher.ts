@@ -17,12 +17,12 @@ export const DEFAULT_DISPATCHER_MAPPINGS: Record<string, { serviceId: string; co
   VIEWS:     { serviceId: '11610', costPer1000: 0.0016, minQuantity: 100 }, // 1-Hour Optimal High-Retention Views (Watch Hours, Impressions, Reach, Instant)
   VIEWERS:   { serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach / impressions
   REACH:     { serviceId: '7465',  costPer1000: 0.0331, minQuantity: 100 }, // Unique reach alias
-  LIKES:     { serviceId: '19262', costPer1000: 0.0324, minQuantity: 100 }, // Verified working Instagram Likes (HQ Account, Instant)
-  COMMENTS:  { serviceId: '16949', costPer1000: 0.3794, minQuantity: 100 }, // Verified working Custom Comments (HQ Profiles, Instant)
-  SAVES:     { serviceId: '14548', costPer1000: 0.0392, minQuantity: 100 }, // Verified working Instagram Saves (Max 10M, Instant)
-  SHARES:    { serviceId: '19608', costPer1000: 0.0010, minQuantity: 100 }, // VERIFIED WORKING
-  REPOSTS:   { serviceId: '14549', costPer1000: 0.2938, minQuantity: 100 }, // VERIFIED WORKING
-  FOLLOWERS: { serviceId: '17065', costPer1000: 0.2957, minQuantity: 100 }, // VERIFIED WORKING
+  LIKES:     { serviceId: '19262', costPer1000: 0.0324, minQuantity: 10  }, // Low-min (1-10) verified working
+  COMMENTS:  { serviceId: '16949', costPer1000: 0.3794, minQuantity: 10  }, // Low-min (10) verified working Custom Comments
+  SAVES:     { serviceId: '14548', costPer1000: 0.0392, minQuantity: 10  }, // Low-min (1-10) verified working
+  SHARES:    { serviceId: '19608', costPer1000: 0.0010, minQuantity: 10  }, // Low-min (10) verified working
+  REPOSTS:   { serviceId: '14549', costPer1000: 0.2938, minQuantity: 1   }, // Low-min (1) verified working
+  FOLLOWERS: { serviceId: '17065', costPer1000: 0.2957, minQuantity: 10  }, // Low-min (10) verified working
 };
 
 export interface DispatchItemResult {
@@ -981,17 +981,14 @@ export async function dispatchBundledOrder(orderId: string): Promise<DispatchSum
       }
     }
 
-    // Min-quantity clamping: strictly enforce minimum quantity of 100 for all engagement sub-orders
-    // and respect provider minimum if higher.
-    // This prevents provider cancellations ("Quantity less than minimal 100").
-    const calculatedQty = item.quantity;
-    const requiredMin = Math.max(mapping.minQuantity || 0, 100);
-    const finalQty = Math.max(calculatedQty, requiredMin);
-    if (finalQty !== calculatedQty) {
+    // Min-quantity clamping: clamp UP strictly to the specific service's minQuantity (e.g., 10 or 1), NOT hardcoded 100
+    // This allows micro-engagements (likes, shares, comments: 10, 15) to dispatch cleanly while preventing provider drops
+    if (mapping.minQuantity > 0 && item.quantity < mapping.minQuantity) {
+      const clampedQty = mapping.minQuantity;
       console.log(
-        `[SMM Dispatcher] Clamped ${item.metricType}: calculated ${calculatedQty} -> ${finalQty} (minimum 100 requirement)`
+        `[SMM Dispatcher] Clamped ${item.metricType}: calculated ${item.quantity} -> ${clampedQty} (service min requirement: ${mapping.minQuantity})`
       );
-      item = { ...item, quantity: finalQty };
+      item = { ...item, quantity: clampedQty };
     }
 
     const estimatedCost = (item.quantity / 1000) * mapping.costPer1000;

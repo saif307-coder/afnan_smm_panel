@@ -24,6 +24,7 @@ import {
   Loader2,
   AlertTriangle,
   Activity,
+  Clock,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -44,6 +45,7 @@ interface AdminSettingsResponse {
     followsPercentage: number;
     viewersPercentage?: number;
     avgWatchTimeRatio?: number;
+    customWatchTime?: number;
   };
 }
 
@@ -53,6 +55,10 @@ export default function OrderForm() {
   // Base views state
   const [baseViews, setBaseViews] = useState<number>(100000);
   const [baseViewsInput, setBaseViewsInput] = useState<string>('100000');
+
+  // Per-Order Custom Watch Time (Seconds) - Required input based on video length
+  const [customWatchTime, setCustomWatchTime] = useState<number>(42);
+  const [customWatchTimeInput, setCustomWatchTimeInput] = useState<string>('42');
 
   // Reel target URL
   const [reelUrl, setReelUrl] = useState<string>('');
@@ -132,10 +138,10 @@ export default function OrderForm() {
   }, []);
 
   // 2. Highly Optimized Real-Time Calculations (useMemo)
-  // Computes in < 0.05ms on any input change without UI lag
+  // Computes in < 0.05ms on any input change without UI lag (incorporating per-order customWatchTime)
   const calculated: CalculatedQuantities = useMemo(() => {
-    return calculateQuantities(baseViews, percentages);
-  }, [baseViews, percentages]);
+    return calculateQuantities(baseViews, percentages, customWatchTime);
+  }, [baseViews, percentages, customWatchTime]);
 
   // Handle Base Views Input changes
   const handleViewsChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -163,6 +169,8 @@ export default function OrderForm() {
   // Reset to Admin Defaults
   const handleResetToDefaults = useCallback(() => {
     setPercentages(adminDefaults);
+    setCustomWatchTime(42);
+    setCustomWatchTimeInput('42');
   }, [adminDefaults]);
 
   // Phase 4: Submit Bundled Order to POST /api/orders with Automated Provider Dispatch
@@ -178,6 +186,16 @@ export default function OrderForm() {
       return;
     }
 
+    if (!customWatchTime || customWatchTime <= 0) {
+      setToast({
+        show: true,
+        type: 'error',
+        title: 'Watch Time Required',
+        message: 'Please provide Custom Watch Time (Seconds) based on video length.',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setOrderResult(null);
 
@@ -189,6 +207,7 @@ export default function OrderForm() {
           targetReelUrl: reelUrl.trim() || undefined,
           baseViews,
           percentages,
+          customWatchTime,
           autoDispatch: true,
         }),
       });
@@ -485,14 +504,100 @@ export default function OrderForm() {
               </div>
             </div>
 
-            {/* 3. Target Reel URL & Submit Action */}
+            {/* 3. Per-Order Custom Watch Time (Required Numeric Input Field) */}
+            <div className="p-6 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-xl backdrop-blur-md space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-400">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                      <span>3. Custom Watch Time (Seconds) - Based on Video Length</span>
+                      <span className="text-rose-400 font-bold text-sm">*</span>
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      Exact per-order watch time input based on video duration (e.g. 25s yields ~0.4x)
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-slate-400">Retention: </span>
+                  <span className="text-xs font-mono font-bold text-teal-400">
+                    {calculated.watchTimeString}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="relative">
+                  <input
+                    type="number"
+                    id="custom-watch-time-input"
+                    required
+                    min={1}
+                    max={3600}
+                    value={customWatchTimeInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomWatchTimeInput(val);
+                      const parsed = parseInt(val, 10);
+                      if (!isNaN(parsed) && parsed > 0) {
+                        setCustomWatchTime(parsed);
+                      }
+                    }}
+                    placeholder="Enter watch time in seconds, e.g. 25"
+                    className="w-full px-4 py-3.5 rounded-xl bg-slate-950/80 border border-slate-700/80 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 text-white font-mono text-lg transition outline-none"
+                  />
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Seconds
+                  </div>
+                </div>
+
+                {/* Duration Presets */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] text-slate-400 font-medium">Video Length Presets:</span>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { sec: 15, label: '15s (~0.3x)' },
+                      { sec: 25, label: '25s (~0.4x)' },
+                      { sec: 30, label: '30s (~0.5x)' },
+                      { sec: 42, label: '42s (0.7x)' },
+                      { sec: 60, label: '60s (1.0x)' },
+                      { sec: 90, label: '90s (~1.5x)' },
+                    ].map(({ sec, label }) => {
+                      const isSelected = customWatchTime === sec;
+                      return (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => {
+                            setCustomWatchTime(sec);
+                            setCustomWatchTimeInput(sec.toString());
+                          }}
+                          className={`px-3 py-1 text-xs font-mono font-medium rounded-lg transition-all ${
+                            isSelected
+                              ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30 ring-1 ring-teal-400'
+                              : 'bg-slate-900/90 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Target Reel URL & Submit Action */}
             <div className="p-6 rounded-2xl bg-[#0e131f]/80 border border-slate-800/80 shadow-xl backdrop-blur-md space-y-4">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
                   <Link2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-semibold text-white">3. Instagram Reel URL</h2>
+                  <h2 className="text-base font-semibold text-white">4. Instagram Reel URL</h2>
                   <p className="text-xs text-slate-400">Target media link for batch order generation</p>
                 </div>
               </div>
@@ -669,7 +774,7 @@ export default function OrderForm() {
               <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80 text-xs">
                 <div className="flex items-center justify-between p-2 rounded-lg bg-black/30 border border-slate-800">
                   <span className="text-slate-400 text-[11px]">Avg Watch Time</span>
-                  <span className="font-mono font-bold text-emerald-400">42s (0.7x)</span>
+                  <span className="font-mono font-bold text-teal-400">{calculated.watchTimeString}</span>
                 </div>
                 <div className="flex items-center justify-between p-2 rounded-lg bg-black/30 border border-slate-800">
                   <span className="text-slate-400 text-[11px]">Total Watch Time</span>
@@ -678,7 +783,7 @@ export default function OrderForm() {
               </div>
 
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                ✨ <strong className="text-slate-300">Global High-Retention Standard:</strong> Dispatched to premium Watch-Time & Real Viewers service, ensuring ~42s retention and ~67.5% real accounts reached.
+                ✨ <strong className="text-slate-300">High-Retention Video Standard:</strong> Dispatched to premium Watch-Time & Real Viewers service, ensuring {calculated.watchTimeString} retention and ~67.5% real accounts reached.
               </p>
             </div>
           </div>

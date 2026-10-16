@@ -26,6 +26,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { calculateSubOrderDelivery } from '@/utils/orderDeliveryProgress';
+import { formatWatchTime } from '@/utils/calculator';
 
 export interface SubOrderItem {
   id: string;
@@ -50,6 +51,7 @@ export interface OrderData {
   reposts: number;
   comments: number;
   followers: number;
+  customWatchTime?: number | null;
   totalCost: number;
   status: string;
   providerResponsesJson?: string | null;
@@ -550,7 +552,7 @@ export default function OrderTracker() {
                       <div className="flex flex-wrap items-center gap-3">
                         <span>Base Views: <strong className="text-white">{order.baseViews.toLocaleString()}</strong></span>
                         <span className="text-blue-400">Viewers (67.5%): <strong className="text-blue-300">{Math.round(order.baseViews * 0.675).toLocaleString()}</strong></span>
-                        <span className="text-teal-400">Avg Watch Time: <strong className="text-teal-300">42s (0.7x)</strong></span>
+                        <span className="text-teal-400">Avg Watch Time: <strong className="text-teal-300">{formatWatchTime(order.customWatchTime)}</strong></span>
                       </div>
                       <span>
                         {order.status === 'COMPLETED'
